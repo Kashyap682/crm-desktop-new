@@ -58,6 +58,10 @@ export class CreateOfferComponent implements OnInit {
 
   constructor(private db: DBService, private router: Router) { }
 
+  private normalizeText(value: any): string {
+    return String(value || '').trim().toLowerCase();
+  }
+
   async ngOnInit() {
     console.log('🟢 CreateOfferComponent initialized');
 
@@ -163,11 +167,13 @@ export class CreateOfferComponent implements OnInit {
 
     const allInquiries = await this.db.getAll('inquiries');
 
-    this.inquiries = allInquiries.filter(
-      (i: any) =>
-        i.customerName?.trim().toLowerCase() ===
-        customer.name?.trim().toLowerCase()
-    );
+    const customerName = this.normalizeText(customer.name);
+    const companyName = this.normalizeText(customer.companyName || customer.name);
+    this.inquiries = allInquiries.filter((i: any) => {
+      const inqCustomerName = this.normalizeText(i.customerName);
+      const inqCompanyName = this.normalizeText(i.companyName);
+      return inqCustomerName === customerName || inqCompanyName === companyName;
+    });
 
     this.showInquiryPopup = this.inquiries.length > 0;
   }
@@ -448,7 +454,12 @@ export class CreateOfferComponent implements OnInit {
   }
 
   getDisplayInquiryId(id?: number): string {
-    if (!id) return '-';
-    return `INQ-${String(id).padStart(4, '0')}`;
+    if (id === null || id === undefined) return '-';
+    const raw = String(id).trim();
+    if (!raw) return '-';
+    const match = raw.match(/INQ-(\d+)/i);
+    const num = match ? parseInt(match[1], 10) : Number(raw);
+    if (!Number.isFinite(num) || num <= 0) return raw;
+    return `INQ-${String(num).padStart(3, '0')}`;
   }
 }
