@@ -62,7 +62,7 @@ jobs:
         run: npm run build
 
       - name: Build Electron app (Windows)
-        run: npx electron-builder --win nsis zip --publish never
+        run: npx electron-builder --win --publish never
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
@@ -96,7 +96,7 @@ jobs:
         run: npm run build
 
       - name: Build Electron app (Linux)
-        run: npx electron-builder --linux AppImage deb rpm --publish never
+        run: npx electron-builder --linux --publish never
 
       - name: Upload Linux artifacts
         uses: actions/upload-artifact@v4

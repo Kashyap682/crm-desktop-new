@@ -4,7 +4,10 @@
   "private": true,
   "main": "main.js",
   "description": "CRM Desktop Application",
-  "author": "Tisya",
+  "author": {
+    "name": "Tisya Pawar",
+    "email": "info@navbharatgroup.com"
+  },
   "scripts": {
     "ng": "ng",
     "start": "ng serve",
@@ -73,7 +76,12 @@
       "category": "public.app-category.business"
     },
     "win": {
-      "target": "nsis"
+      "target": ["nsis", "zip"]
+    },
+    "linux": {
+      "target": ["AppImage", "deb", "rpm"],
+      "category": "Office",
+      "maintainer": "info@navbharatgroup.com"
     },
     "publish": [
       {
