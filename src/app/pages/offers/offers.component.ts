@@ -97,6 +97,17 @@ export class OffersComponent {
     this.inquiries = await this.dbService.getAll('inquiries');
   }
 
+  private toInquiryId(value: any): number | null {
+    if (value === null || value === undefined) return null;
+    if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+    const raw = String(value).trim();
+    if (!raw) return null;
+    const m = raw.match(/INQ-(\d+)/i);
+    if (m) return parseInt(m[1], 10);
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : null;
+  }
+
   getInquiriesForTab(tabValue: string): any[] {
     if (!tabValue) return [];
     const decisionMap: Record<string, string> = {
@@ -108,10 +119,12 @@ export class OffersComponent {
     const decision = decisionMap[tabValue];
     if (!decision) return [];
     const offeredInquiryIds = new Set(
-      this.offers.map((o: any) => o.inquiryNo).filter((id: any) => id != null)
+      this.offers
+        .map((o: any) => this.toInquiryId(o.inquiryNo))
+        .filter((id: any) => id != null)
     );
     return this.inquiries.filter(
-      (inq: any) => inq.decision === decision && !offeredInquiryIds.has(inq.id)
+      (inq: any) => inq.decision === decision && !offeredInquiryIds.has(this.toInquiryId(inq.id))
     );
   }
 
@@ -238,7 +251,8 @@ export class OffersComponent {
       const decision = decisionMap[status];
       if (decision) {
         const allInquiries = await this.dbService.getAll('inquiries');
-        const inq = allInquiries.find((i: any) => i.id === offer.inquiryNo);
+        const offerInquiryId = this.toInquiryId(offer.inquiryNo);
+        const inq = allInquiries.find((i: any) => this.toInquiryId(i.id) === offerInquiryId);
         if (inq) {
           inq.decision = decision;
           await this.dbService.put('inquiries', inq);
