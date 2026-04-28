@@ -358,8 +358,28 @@ export class InvoicesComponent implements OnInit {
     if (so.freightCharges)  this.invoiceForm.freightCharges = so.freightCharges;
     if (so.transportMode)   this.invoiceForm.transport.mode = so.transportMode;
     if (so.transporterName) this.invoiceForm.transport.name = so.transporterName;
+    if (so.vehicleNo)       this.invoiceForm.transport.vehicleNo = so.vehicleNo;
+    if (so.lrNo)            this.invoiceForm.transport.lrNo = so.lrNo;
     if (so.paymentTerms)    this.invoiceForm.paymentTerms   = so.paymentTerms;
     if (so.expectedDeliveryDate) this.invoiceForm.dueDate   = so.expectedDeliveryDate;
+    if (so.poNo && !this.invoiceForm.internalRefNo) this.invoiceForm.internalRefNo = so.poNo;
+    if (so.poDate && !this.invoiceForm.remarks) this.invoiceForm.remarks = `PO Date: ${so.poDate}`;
+
+    const soSupplyType = String(so.gstType || '').toLowerCase();
+    if (soSupplyType === 'igst') {
+      this.invoiceForm.supplyType = 'IGST';
+    } else if (soSupplyType === 'cgst_sgst') {
+      this.invoiceForm.supplyType = 'GST';
+    }
+
+    if (!this.invoiceForm.supplyStateCode) {
+      this.invoiceForm.supplyStateCode =
+        this.invoiceForm.billTo.supplyStateCode || billingStateCode || '';
+    }
+    if (!this.invoiceForm.placeOfSupply) {
+      this.invoiceForm.placeOfSupply =
+        this.invoiceForm.billTo.placeOfSupply || customer?.billing?.city || customer?.officeAddress?.city || '';
+    }
 
     // ── 4. Fallback: offer linked to this SO's inquiry ────────────────
     const inquiryRef: string = so.inquiryId || '';
