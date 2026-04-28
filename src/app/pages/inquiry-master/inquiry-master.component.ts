@@ -354,8 +354,13 @@ export class InquiryMasterComponent {
   ----------------------------- */
 
   getDisplayInquiryId(id?: number): string {
-    if (!id) return '-';
-    return `INQ-${String(id).padStart(3, '0')}`;
+    if (id === null || id === undefined) return '-';
+    const raw = String(id).trim();
+    if (!raw) return '-';
+    const match = raw.match(/INQ-(\d+)/i);
+    const num = match ? parseInt(match[1], 10) : Number(raw);
+    if (!Number.isFinite(num) || num <= 0) return raw;
+    return `INQ-${String(num).padStart(3, '0')}`;
   }
 
   private async getNextInquiryId(): Promise<number> {

@@ -153,6 +153,17 @@ export class PurchaseOrderComponent {
     return `INQ-${String(id).padStart(3, '0')}`;
   }
 
+  private toInquiryId(value: any): number | null {
+    if (value === null || value === undefined) return null;
+    if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+    const raw = String(value).trim();
+    if (!raw) return null;
+    const match = raw.match(/INQ-(\d+)/i);
+    if (match) return parseInt(match[1], 10);
+    const num = Number(raw);
+    return Number.isFinite(num) ? num : null;
+  }
+
   constructor(
     private router: Router,
     private dbService: DBService
@@ -567,8 +578,8 @@ export class PurchaseOrderComponent {
     // Find the inquiry by display id
     const match = inquiryDisplayId.match(/INQ-(\d+)/i);
     if (!match) return;
-    const numId = parseInt(match[1]);
-    const inq = this.allInquiries.find((i: any) => i.id === numId);
+    const numId = parseInt(match[1], 10);
+    const inq = this.allInquiries.find((i: any) => this.toInquiryId(i.id) === numId);
     if (!inq) return;
 
     // PO date from inquiry date
@@ -614,8 +625,9 @@ export class PurchaseOrderComponent {
     if (inqFreight > 0) this.freightCharges = inqFreight;
 
     // Find offer for this inquiry
+    const inqId = this.toInquiryId(inq.id);
     const relatedOffer = this.allOffers.find((o: any) =>
-      o.inquiryNo === inq.id && o.status !== 'superseded'
+      this.toInquiryId(o.inquiryNo) === inqId && o.status !== 'superseded'
     );
 
     if (relatedOffer) {
