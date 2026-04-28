@@ -1,0 +1,570 @@
+<div class="offers-container">
+  <!-- Header Section -->
+  <div class="page-header">
+    <div class="header-content">
+      <h1 class="page-title">Offers Management</h1>
+      <p class="page-subtitle">Create and manage customer offers</p>
+    </div>
+    <button class="btn btn-primary" (click)="createOffer()">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+        <path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+      </svg>
+      New Offer
+    </button>
+  </div>
+
+  <!-- Status Filter Tabs -->
+  <div class="status-tabs">
+    <button *ngFor="let s of statusOptions"
+      class="status-tab"
+      [class.active]="selectedStatus === s.value"
+      (click)="selectedStatus = s.value">
+      {{ s.label }}
+      <span class="tab-count">{{ getStatusCount(s.value) }}</span>
+    </button>
+  </div>
+
+  <!-- Inquiries grouped by decision (shown when a non-All tab is active) -->
+  <div class="table-container" *ngIf="selectedStatus && getInquiriesForTab(selectedStatus).length > 0">
+    <h3 style="padding: 12px 16px; margin: 0; font-size: 14px; font-weight: 600; color: #64748b; border-bottom: 1px solid #e2e8f0;">
+      Inquiries ({{ getInquiriesForTab(selectedStatus).length }})
+    </h3>
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Inquiry ID</th>
+          <th>Date</th>
+          <th>Company</th>
+          <th>Customer</th>
+          <th>Items</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let inq of getInquiriesForTab(selectedStatus)" class="table-row" style="cursor:pointer">
+          <td><span class="offer-id">INQ-{{ ('000' + inq.id).slice(-3) }}</span></td>
+          <td>{{ formatDisplayDate(inq.date) }}</td>
+          <td>{{ inq.companyName || '—' }}</td>
+          <td>{{ inq.customerName }}</td>
+          <td>{{ inq.items?.length || 0 }} item(s)</td>
+          <td>
+            <button class="btn btn-primary" style="padding: 4px 12px; font-size: 13px;" (click)="openCreateOfferFromInquiry(inq)">
+              Create Offer
+            </button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Table Container -->
+  <div class="table-container">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Offer ID</th>
+          <th>Offer Reference</th>
+          <th>Customer</th>
+          <th>Date</th>
+          <th>Amount</th>
+          <th>Status</th>
+          <th class="actions-column">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let o of filteredOffers" class="table-row">
+          <td>
+            <span class="offer-id">{{ o.id }}</span>
+          </td>
+          <td>
+            <span class="offer-ref">{{ o.offerRef || ('NIEC/MDD/' + (o.id || '')) }}</span>
+          </td>
+          <td>
+            <div class="customer-name">{{ o.customerName }}</div>
+          </td>
+          <td>
+            <div class="date-cell">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                <path
+                  d="M12.667 2.667H3.333c-.733 0-1.333.6-1.333 1.333v9.333c0 .734.6 1.334 1.333 1.334h9.334c.733 0 1.333-.6 1.333-1.334V4c0-.733-.6-1.333-1.333-1.333zM2 6h12"
+                  stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+              </svg>
+              {{ formatDisplayDate(o.date) }}
+            </div>
+          </td>
+          <td>
+            <span class="amount">₹{{ o.grandTotal | number:'1.2-2' }}</span>
+          </td>
+          <td>
+            <select class="status-select"
+              [ngModel]="o.offerStatus || ''"
+              (ngModelChange)="updateOfferStatus(o, $event)"
+              [class.status-order-received]="o.offerStatus === 'order_received'"
+              [class.status-order-lost]="o.offerStatus === 'order_lost'"
+              [class.status-negotiation]="o.offerStatus === 'under_negotiation'"
+              [class.status-rejected]="o.offerStatus === 'rejected'">
+              <option value="">-- Set Status --</option>
+              <option value="under_negotiation">Under Negotiation</option>
+              <option value="order_received">Order Received</option>
+              <option value="order_lost">Order Lost</option>
+              <option value="rejected">Rejected</option>
+            </select>
+          </td>
+          <td class="actions-column">
+            <div class="action-buttons">
+              <button class="btn-icon btn-view" (click)="viewOffer(o)" title="View Offer">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <path d="M.667 8S3.333 2.667 8 2.667 15.333 8 15.333 8 12.667 13.333 8 13.333.667 8 .667 8z"
+                    stroke="currentColor" stroke-width="1.5" />
+                  <circle cx="8" cy="8" r="2" stroke="currentColor" stroke-width="1.5" />
+                </svg>
+              </button>
+              <button class="btn-icon btn-history" (click)="openHistoryModal(o)" title="View History">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <path d="M8 1.333A6.667 6.667 0 108 14.667 6.667 6.667 0 008 1.333z" stroke="currentColor" stroke-width="1.5"/>
+                  <path d="M8 4.667V8l2.667 1.333" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </button>
+              <button class="btn-icon btn-edit" (click)="editOffer(o)" title="Edit / Revise Offer">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <path d="M11.333 2A1.886 1.886 0 0114 4.667l-9 9-3.667 1 1-3.667 9-9z" stroke="currentColor"
+                    stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+              </button>
+              <button *ngIf="o.offerStatus === 'order_received'"
+                class="btn-icon btn-so" (click)="createSalesOrderFromOffer(o)" title="Create Sales Order">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <path d="M13.333 2H2.667A1.333 1.333 0 001.333 3.333v9.334A1.333 1.333 0 002.667 14h10.666A1.333 1.333 0 0014.667 12.667V3.333A1.333 1.333 0 0013.333 2zM5.333 8h5.334M8 5.333v5.334"
+                    stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+              </button>
+              <button class="btn-icon btn-delete" (click)="deleteOffer(o.id)" title="Delete">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <path
+                    d="M2 4h12M5.333 4V2.667a1.333 1.333 0 011.334-1.334h2.666a1.333 1.333 0 011.334 1.334V4m2 0v9.333a1.333 1.333 0 01-1.334 1.334H4.667a1.333 1.333 0 01-1.334-1.334V4h9.334z"
+                    stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+              </button>
+            </div>
+          </td>
+        </tr>
+
+        <tr *ngIf="!filteredOffers || filteredOffers.length === 0">
+          <td colspan="7" class="empty-state">
+            <div class="empty-state-content">
+              <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+                <path d="M40 18H8a2 2 0 00-2 2v20a2 2 0 002 2h32a2 2 0 002-2V20a2 2 0 00-2-2zM32 18V12a8 8 0 10-16 0v6"
+                  stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+              <p>No offers found</p>
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- OFFER HISTORY MODAL -->
+<div *ngIf="showHistoryModal" class="modal-overlay" (click)="closeHistoryModal()">
+  <div class="modal-content history-modal" (click)="$event.stopPropagation()">
+    <div class="modal-header">
+      <h2 class="modal-title">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" class="modal-icon">
+          <path d="M12 2a10 10 0 100 20A10 10 0 0012 2z" stroke="currentColor" stroke-width="2"/>
+          <path d="M12 7v5l3 2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Offer Revision History
+      </h2>
+      <button class="modal-close" (click)="closeHistoryModal()">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+          <path d="M15 5L5 15M5 5l10 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+        </svg>
+      </button>
+    </div>
+
+    <div class="history-layout">
+      <!-- Left: version list -->
+      <div class="history-sidebar">
+        <p class="history-sidebar-title">{{ historyOffers.length }} Version(s)</p>
+        <div *ngFor="let hv of historyOffers; let i = index"
+          class="history-version-item"
+          [class.active]="viewingHistoryOffer?.id === hv.id || (!viewingHistoryOffer && i === historyOffers.length - 1)"
+          (click)="viewHistoryVersion(hv)">
+          <span class="version-ref">{{ hv.offerRef || ('Offer #' + hv.id) }}</span>
+          <span class="version-date">{{ formatDisplayDate(hv.date) }}</span>
+          <span class="version-badge" *ngIf="i === historyOffers.length - 1">Latest</span>
+          <span class="version-badge version-badge-old" *ngIf="i < historyOffers.length - 1">Rev {{ i + 1 }}</span>
+        </div>
+      </div>
+
+      <!-- Right: version detail -->
+      <div class="history-detail" *ngIf="viewingHistoryOffer || historyOffers.length > 0">
+        <ng-container [ngTemplateOutlet]="historyDetailTpl"
+          [ngTemplateOutletContext]="{ offer: viewingHistoryOffer || historyOffers[historyOffers.length - 1] }">
+        </ng-container>
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn btn-secondary" (click)="closeHistoryModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Reusable history detail template -->
+<ng-template #historyDetailTpl let-offer="offer">
+  <div class="history-offer-detail">
+    <div class="info-grid">
+      <div class="info-item">
+        <span class="info-label">Offer Reference</span>
+        <span class="info-value">{{ offer?.offerRef || '-' }}</span>
+      </div>
+      <div class="info-item">
+        <span class="info-label">Date</span>
+        <span class="info-value">{{ formatDisplayDate(offer?.date) }}</span>
+      </div>
+      <div class="info-item">
+        <span class="info-label">Customer</span>
+        <span class="info-value">{{ offer?.customerName }}</span>
+      </div>
+      <div class="info-item">
+        <span class="info-label">Payment Terms</span>
+        <span class="info-value">{{ offer?.paymentTerms || '-' }}</span>
+      </div>
+      <div class="info-item">
+        <span class="info-label">Validity</span>
+        <span class="info-value">{{ offer?.validity || '-' }}</span>
+      </div>
+      <div class="info-item">
+        <span class="info-label">Grand Total</span>
+        <span class="info-value">₹{{ offer?.grandTotal | number:'1.2-2' }}</span>
+      </div>
+    </div>
+
+    <div class="items-section" *ngIf="offer?.items?.length">
+      <h4 class="section-title">Items</h4>
+      <table class="items-table">
+        <thead>
+          <tr>
+            <th>Item</th>
+            <th>HSN</th>
+            <th>Qty</th>
+            <th>Rate</th>
+            <th>Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let it of offer.items">
+            <td>{{ it.name }}</td>
+            <td>{{ it.hsn }}</td>
+            <td>{{ it.qty }}</td>
+            <td>₹{{ it.rate | number:'1.2-2' }}</td>
+            <td>₹{{ it.total | number:'1.2-2' }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</ng-template>
+
+<!-- VIEW OFFER MODAL -->
+<div *ngIf="showViewModal" class="modal-overlay" (click)="closeViewModal()">
+  <div class="modal-content view-modal" (click)="$event.stopPropagation()">
+
+    <div class="modal-header">
+      <h2 class="modal-title">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" class="modal-icon">
+          <path
+            d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
+            stroke="currentColor" stroke-width="2" />
+        </svg>
+        Offer Preview
+      </h2>
+      <button class="modal-close" (click)="closeViewModal()">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+          <path d="M15 5L5 15M5 5l10 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+        </svg>
+      </button>
+    </div>
+
+    <div class="view-content">
+      <div class="info-grid">
+        <div class="info-item">
+          <span class="info-label">Offer Reference</span>
+          <span class="info-value">{{ selectedOffer?.offerRef }}</span>
+        </div>
+        <div class="info-item">
+          <span class="info-label">Customer</span>
+          <span class="info-value">{{ selectedOffer?.customerName }}</span>
+        </div>
+        <!-- ✅ CHANGED: formatted as dd/mm/yy -->
+        <div class="info-item">
+          <span class="info-label">Date</span>
+          <span class="info-value">{{ formatDisplayDate(selectedOffer?.date) }}</span>
+        </div>
+        <div class="info-item">
+          <span class="info-label">Payment Terms</span>
+          <span class="info-value">{{ selectedOffer?.paymentTerms || '-' }}</span>
+        </div>
+        <div class="info-item">
+          <span class="info-label">Validity</span>
+          <span class="info-value">{{ selectedOffer?.validity || '-' }}</span>
+        </div>
+      </div>
+
+      <div class="items-section">
+        <h3 class="section-title">Items</h3>
+        <div class="items-table-wrapper" *ngIf="selectedOffer?.items?.length">
+          <table class="items-table">
+            <thead>
+              <tr>
+                <th>Item</th>
+                <th>HSN</th>
+                <th>Qty</th>
+                <th>Rate</th>
+                <th>Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let it of selectedOffer.items">
+                <td>{{ it.name }}</td>
+                <td>{{ it.hsn }}</td>
+                <td>{{ it.qty }}</td>
+                <td>₹{{ it.rate | number:'1.2-2' }}</td>
+                <td>₹{{ it.total | number:'1.2-2' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="summary-section-view">
+        <div class="summary-row">
+          <span class="summary-label">Subtotal:</span>
+          <span class="summary-value">₹{{ selectedOffer?.subtotal | number:'1.2-2' }}</span>
+        </div>
+        <div class="summary-row" *ngIf="selectedOffer?.freightCharges > 0">
+          <span class="summary-label">Freight Charges:</span>
+          <span class="summary-value">₹{{ selectedOffer?.freightCharges | number:'1.2-2' }}</span>
+        </div>
+        <div class="summary-row">
+          <span class="summary-label">GST (18%):</span>
+          <span class="summary-value">₹{{ selectedOffer?.gst | number:'1.2-2' }}</span>
+        </div>
+        <!-- CGST + SGST breakdown -->
+        <ng-container *ngIf="selectedOffer?.gstType !== 'igst'">
+          <div class="summary-row" style="padding-left: 16px; border-left: 3px solid #e2e8f0; margin: 4px 0;">
+            <span class="summary-label" style="font-size:13px; color:#94a3b8;">↳ CGST (9%):</span>
+            <span class="summary-value" style="font-size:14px;">₹{{ (selectedOffer?.cgst || (selectedOffer?.gst / 2)) | number:'1.2-2' }}</span>
+          </div>
+          <div class="summary-row" style="padding-left: 16px; border-left: 3px solid #e2e8f0; margin: 4px 0;">
+            <span class="summary-label" style="font-size:13px; color:#94a3b8;">↳ SGST (9%):</span>
+            <span class="summary-value" style="font-size:14px;">₹{{ (selectedOffer?.sgst || (selectedOffer?.gst / 2)) | number:'1.2-2' }}</span>
+          </div>
+        </ng-container>
+        <!-- IGST breakdown -->
+        <ng-container *ngIf="selectedOffer?.gstType === 'igst'">
+          <div class="summary-row" style="padding-left: 16px; border-left: 3px solid #e2e8f0; margin: 4px 0;">
+            <span class="summary-label" style="font-size:13px; color:#94a3b8;">↳ IGST (18%):</span>
+            <span class="summary-value" style="font-size:14px;">₹{{ (selectedOffer?.igst || selectedOffer?.gst) | number:'1.2-2' }}</span>
+          </div>
+        </ng-container>
+        <div class="summary-divider"></div>
+        <div class="summary-row summary-total">
+          <span class="summary-label">Grand Total (Incl. GST):</span>
+          <span class="summary-value">₹{{ selectedOffer?.grandTotal | number:'1.2-2' }}</span>
+        </div>
+      </div>
+
+      <div class="terms-section" *ngIf="selectedOffer?.terms">
+        <h3 class="section-title">Terms & Conditions</h3>
+        <p class="terms-text">{{ selectedOffer?.terms }}</p>
+      </div>
+
+      <div class="notes-section" *ngIf="selectedOffer?.notes">
+        <h3 class="section-title">Notes</h3>
+        <p class="notes-text">{{ selectedOffer?.notes }}</p>
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn btn-secondary" (click)="closeViewModal()">Close</button>
+      <button class="btn btn-primary" (click)="openOfferLetterModal()">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <path
+            d="M14 10v2.667A1.333 1.333 0 0112.667 14H3.333A1.333 1.333 0 012 12.667V10M4.667 6.667L8 10m0 0l3.333-3.333M8 10V2"
+            stroke="currentColor" stroke-width="1.5" />
+        </svg>
+        Download Offer
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- OFFER LETTER SPECIFICATION MODAL -->
+<div *ngIf="showPdfFormModal" class="modal-overlay" (click)="closeOfferLetterModal()">
+  <div class="modal-content pdf-form-modal" (click)="$event.stopPropagation()">
+
+    <div class="modal-header">
+      <h2 class="modal-title">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" class="modal-icon">
+          <path
+            d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+            stroke="currentColor" stroke-width="2" />
+        </svg>
+        Offer Letter Specification
+      </h2>
+      <button class="modal-close" (click)="closeOfferLetterModal()">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+          <path d="M15 5L5 15M5 5l10 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+        </svg>
+      </button>
+    </div>
+
+    <form class="pdf-form">
+      <div class="form-scroll-area">
+
+        <div class="section-card">
+          <h3 class="section-header">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+              <path
+                d="M15 15.75H3a1.5 1.5 0 01-1.5-1.5V3.75a1.5 1.5 0 011.5-1.5h12a1.5 1.5 0 011.5 1.5v10.5a1.5 1.5 0 01-1.5 1.5z"
+                stroke="currentColor" stroke-width="1.5" />
+            </svg>
+            Basic Information
+          </h3>
+
+          <div class="row-2">
+            <div class="form-group">
+              <label class="form-label">Date (DD/MM/YY)</label>
+              <input type="text" class="form-input" [(ngModel)]="offerLetter['date']" name="date"
+                placeholder="DD/MM/YY" />
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">
+                Subject: <span class="subject-prefix">Your enquiry for supply of</span>
+              </label>
+              <select class="form-input" [ngModel]="selectedSubjectItem"
+                (ngModelChange)="onSubjectProductChange($event)" name="subjectProduct">
+                <option *ngFor="let it of selectedOffer?.items" [ngValue]="it">
+                  {{ it.name }}
+                </option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="section-card">
+          <h3 class="section-header">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+              <path d="M15.75 11.25v3.75a1.5 1.5 0 01-1.5 1.5H3.75a1.5 1.5 0 01-1.5-1.5v-10.5a1.5 1.5 0 011.5-1.5h3.75"
+                stroke="currentColor" stroke-width="1.5" />
+            </svg>
+            Product Specifications
+          </h3>
+
+          <div class="row-2">
+            <div class="form-group">
+              <label class="form-label">Material</label>
+              <input type="text" class="form-input" [(ngModel)]="offerLetter['material']" name="material" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Density</label>
+              <input type="text" class="form-input" [(ngModel)]="offerLetter['density']" name="density" />
+            </div>
+          </div>
+
+          <div class="row-3">
+            <div class="form-group">
+              <label class="form-label">Thickness</label>
+              <input type="text" class="form-input" [(ngModel)]="offerLetter['thickness']" name="thickness" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Size</label>
+              <input type="text" class="form-input" [(ngModel)]="offerLetter['size']" name="size" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Quantity</label>
+              <input type="text" class="form-input" [(ngModel)]="offerLetter['quantity']" name="quantity" />
+            </div>
+          </div>
+        </div>
+
+        <div class="section-card">
+          <h3 class="section-header">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+              <path d="M9 1.5v15M13.5 4.5h-6a3 3 0 000 6h3a3 3 0 010 6h-6" stroke="currentColor" stroke-width="1.5"
+                stroke-linecap="round" />
+            </svg>
+            Pricing & Terms
+          </h3>
+
+          <div class="row-2">
+            <div class="form-group">
+              <label class="form-label">Rate</label>
+              <input type="text" class="form-input" [(ngModel)]="offerLetter['rate']" name="rate" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Taxes</label>
+              <input type="text" class="form-input readonly-field" [value]="'Extra - GST as applicable'" readonly
+                style="background-color: #edf2f7; cursor: not-allowed; color: #64748b;" />
+            </div>
+          </div>
+
+          <div class="row-2">
+            <div class="form-group">
+              <label class="form-label">Freight</label>
+              <input type="text" class="form-input" [(ngModel)]="offerLetter['freight']" name="freight" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Delivery Terms</label>
+              <input type="text" class="form-input" [(ngModel)]="offerLetter['deliveryTerms']" name="deliveryTerms" />
+            </div>
+          </div>
+        </div>
+
+        <div class="section-card">
+          <h3 class="section-header">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+              <path
+                d="M13.5 1.5H4.5A1.5 1.5 0 003 3v12a1.5 1.5 0 001.5 1.5h9a1.5 1.5 0 001.5-1.5V3a1.5 1.5 0 00-1.5-1.5z"
+                stroke="currentColor" stroke-width="1.5" />
+            </svg>
+            Additional Details
+          </h3>
+
+          <div class="row-2">
+            <div class="form-group">
+              <label class="form-label">Inspection</label>
+              <input type="text" class="form-input" [(ngModel)]="offerLetter['inspection']" name="inspection" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Packing</label>
+              <input type="text" class="form-input" [(ngModel)]="offerLetter['packing']" name="packing" />
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Loading</label>
+            <input type="text" class="form-input" [(ngModel)]="offerLetter['loading']" name="loading" />
+          </div>
+        </div>
+
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-cancel" (click)="closeOfferLetterModal()">Cancel</button>
+        <button type="button" class="btn btn-save" (click)="downloadOfferPDF()">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path
+              d="M14 10v2.667A1.333 1.333 0 0112.667 14H3.333A1.333 1.333 0 012 12.667V10M4.667 6.667L8 10m0 0l3.333-3.333M8 10V2"
+              stroke="currentColor" stroke-width="1.5" />
+          </svg>
+          Download PDF
+        </button>
+      </div>
+    </form>
+  </div>
+</div>

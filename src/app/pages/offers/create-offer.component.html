@@ -1,0 +1,415 @@
+<div class="offer-container">
+  <!-- Header Section -->
+  <div class="page-header">
+    <div class="header-left">
+      <button class="btn-back" (click)="goBackToList()">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+          <path d="M15 10H5M5 10l5 5M5 10l5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+            stroke-linejoin="round" />
+        </svg>
+        Back
+      </button>
+      <div class="header-content">
+        <h1 class="page-title">Create Offer</h1>
+        <p class="page-subtitle">Generate a professional offer for your customer</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Form Card -->
+  <div class="offer-card">
+    <form class="offer-form">
+
+      <!-- CUSTOMER INFORMATION -->
+      <div class="section-card">
+        <h3 class="section-header">
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+            <path d="M15 15.75v-1.5a3 3 0 00-3-3H6a3 3 0 00-3 3v1.5M12 5.25a3 3 0 11-6 0 3 3 0 016 0z"
+              stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+          Customer Information
+        </h3>
+
+        <div class="row-2">
+          <div class="form-group">
+            <label class="form-label">Company Name <span class="required">*</span></label>
+            <select class="form-select" [(ngModel)]="selectedCustomer" (ngModelChange)="onCustomerChange()"
+              name="customer">
+              <option [ngValue]="null">Select Company</option>
+              <option *ngFor="let c of customers" [ngValue]="c">{{ c.companyName || c.name }}</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Offer ID</label>
+            <input type="text" class="form-input"
+              [value]="isEditMode ? (offer.offerRef || previewOfferId) : previewOfferId" readonly
+              style="background-color: #f7fafc; cursor: not-allowed;" />
+          </div>
+        </div>
+
+      </div>
+
+      <!-- INQUIRY INFORMATION (Read-only) -->
+      <div class="section-card" *ngIf="selectedInquiry">
+        <h3 class="section-header">
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+            <path
+              d="M9 5H7a2 2 0 00-2 2v8a2 2 0 002 2h6a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
+              stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+          Inquiry Details (Reference)
+        </h3>
+
+        <!-- Basic Inquiry Info -->
+        <div class="row-3">
+          <div class="form-group">
+            <label class="form-label">Inquiry No</label>
+            <input type="text" class="form-input" [value]="getDisplayInquiryId(selectedInquiry.id)" readonly
+              style="background-color: #f7fafc; cursor: not-allowed;" />
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Inquiry Date</label>
+            <input type="text" class="form-input" [value]="selectedInquiry.date" readonly
+              style="background-color: #f7fafc; cursor: not-allowed;" />
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Inquiry Type</label>
+            <input type="text" class="form-input" [value]="selectedInquiry.inquiryType || '-'" readonly
+              style="background-color: #f7fafc; cursor: not-allowed;" />
+          </div>
+        </div>
+
+        <!-- Customer Info from Inquiry -->
+        <div class="row-3">
+          <div class="form-group">
+            <label class="form-label">Company Name (from Inquiry)</label>
+            <input type="text" class="form-input" [value]="selectedInquiry.companyName || selectedCustomer?.companyName || '-'" readonly
+              style="background-color: #f7fafc; cursor: not-allowed;" />
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Customer Name (from Inquiry)</label>
+            <input type="text" class="form-input" [value]="selectedInquiry.customerName" readonly
+              style="background-color: #f7fafc; cursor: not-allowed;" />
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Purchase Rate (₹)</label>
+            <input type="number" class="form-input" [(ngModel)]="offer.purchaseRate" name="purchaseRate"
+              placeholder="Enter purchase rate" min="0" />
+          </div>
+        </div>
+
+        <div class="row-2">
+          <div class="form-group">
+            <label class="form-label">Customer Phone</label>
+            <input type="text" class="form-input" [value]="selectedInquiry.customerPhone || '-'" readonly
+              style="background-color: #f7fafc; cursor: not-allowed;" />
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Customer Email</label>
+            <input type="text" class="form-input"
+              [value]="selectedInquiry.customerEmail || selectedInquiry.email || '-'" readonly
+              style="background-color: #f7fafc; cursor: not-allowed;" />
+          </div>
+        </div>
+
+        <!-- Inquiry Items Table (Read-only) with selection checkboxes -->
+        <div class="form-group">
+          <label class="form-label">
+            Inquiry Items ({{ selectedInquiry.items.length }} items)
+            <span *ngIf="selectedInquiry.items.length > 1"
+              style="font-size:11px; color:#4a6fa5; margin-left:8px; font-weight:400;">
+              — check to include in offer
+            </span>
+          </label>
+          <div class="inquiry-items-wrapper">
+            <table class="items-table-readonly">
+              <thead>
+                <tr>
+                  <th *ngIf="selectedInquiry.items.length > 1" style="width:36px;">✓</th>
+                  <th style="width: 25%;">Product Name</th>
+                  <th style="width: 15%;">Make/Brand</th>
+                  <th style="width: 12%;">Form</th>
+                  <th style="width: 12%;">Density</th>
+                  <th style="width: 12%;">Thickness</th>
+                  <th style="width: 9%;">FSK</th>
+                  <th style="width: 8%;">Qty</th>
+                  <th style="width: 7%;">UOM</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let item of selectedInquiry.items; let i = index"
+                  [style.opacity]="selectedInquiry.items.length > 1 && !isInquiryItemSelected(i) ? '0.45' : '1'">
+                  <td *ngIf="selectedInquiry.items.length > 1" style="text-align:center;">
+                    <input type="checkbox" [checked]="isInquiryItemSelected(i)"
+                      (change)="onInquiryItemToggle(i, $any($event.target).checked)" />
+                  </td>
+                  <td><strong>{{ item.productName || '-' }}</strong></td>
+                  <td>{{ item.make || '-' }}</td>
+                  <td>{{ item.form || '-' }}</td>
+                  <td>{{ item.density || '-' }}</td>
+                  <td>{{ item.thickness || '-' }}</td>
+                  <td>{{ item.fsk || '-' }}</td>
+                  <td class="text-center">{{ item.qty || '-' }}</td>
+                  <td class="text-center">{{ item.uom || '-' }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Notes (if any) -->
+        <div class="form-group" *ngIf="selectedInquiry.notes">
+          <label class="form-label">Inquiry Notes</label>
+          <textarea class="form-textarea" [value]="selectedInquiry.notes" readonly rows="3"
+            style="background-color: #f7fafc; cursor: not-allowed; resize: none;"></textarea>
+        </div>
+
+        <!-- Follow-ups (if any) -->
+        <div class="form-group" *ngIf="selectedInquiry.followUps && selectedInquiry.followUps.length > 0">
+          <label class="form-label">Follow-up History</label>
+          <div class="followup-list">
+            <div *ngFor="let followUp of selectedInquiry.followUps" class="followup-item">
+              <span class="followup-date">{{ followUp.date | date:'dd/MM/yyyy' }}</span>
+              <span class="followup-note">{{ followUp.note }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ITEMS -->
+      <div class="section-card">
+        <h3 class="section-header">
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+            <path d="M2.25 3.75h13.5M2.25 7.5h13.5M2.25 11.25h13.5M2.25 15h13.5" stroke="currentColor"
+              stroke-width="1.5" stroke-linecap="round" />
+          </svg>
+          Items
+        </h3>
+
+        <div class="items-table-wrapper">
+          <table class="items-table">
+            <thead>
+              <tr>
+                <th>Item Name</th>
+                <th>HSN Code</th>
+                <th>Quantity</th>
+                <th>Rate (₹)</th>
+                <th>Total (₹)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let item of offer.items; let i = index" class="item-row">
+                <td>{{ item.name }}</td>
+                <td>{{ item.hsn }}</td>
+                <td class="qty-cell">{{ item.qty }}</td>
+                <td class="rate-cell">
+                  <input type="number" class="table-input" [(ngModel)]="item.rate" (input)="calcTotals()"
+                    [name]="'rate-'+i" />
+                </td>
+                <td class="total-cell">₹{{ item.total | number:'1.2-2' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="empty-state" *ngIf="!offer.items || offer.items.length === 0">
+          <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+            <path d="M24 44c11.046 0 20-8.954 20-20S35.046 4 24 4 4 12.954 4 24s8.954 20 20 20z" stroke="currentColor"
+              stroke-width="2" />
+            <path d="M24 16v12M24 32h.02" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+          </svg>
+          <p>No items selected. Please select a customer with an inquiry to populate items.</p>
+        </div>
+
+        <!-- FREIGHT CHARGES -->
+        <div class="freight-row" *ngIf="offer.items && offer.items.length > 0">
+          <div class="freight-field">
+            <label class="form-label">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none"
+                style="display:inline; vertical-align:middle; margin-right:5px;">
+                <path
+                  d="M1 5h9.5M1 5v5.5a1 1 0 001 1h1M1 5V3a1 1 0 011-1h6.5l2 3H1zM10.5 5l1.5 2.5v3.5h-1M4.5 11.5a1 1 0 100-2 1 1 0 000 2zM9.5 11.5a1 1 0 100-2 1 1 0 000 2z"
+                  stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+              Freight Charges (₹)
+            </label>
+            <input type="number" class="form-input freight-input" [(ngModel)]="offer.freightCharges"
+              (input)="calcTotals()" name="freightCharges" placeholder="0.00" min="0" />
+          </div>
+        </div>
+      </div>
+
+      <!-- SUMMARY -->
+      <div class="summary-section">
+        <div class="summary-card">
+          <div class="summary-row">
+            <span class="summary-label">Subtotal:</span>
+            <span class="summary-value">₹{{ offer.subtotal | number:'1.2-2' }}</span>
+          </div>
+
+
+
+          <!-- Freight Charges Row -->
+          <div class="summary-row" *ngIf="offer.freightCharges > 0">
+            <span class="summary-label">Freight Charges:</span>
+            <span class="summary-value">₹{{ offer.freightCharges | number:'1.2-2' }}</span>
+          </div>
+
+          <!-- GST Type Selector -->
+          <div class="summary-row" style="align-items: center; gap: 12px;">
+            <span class="summary-label">GST Type:</span>
+            <div style="display: flex; gap: 16px; align-items: center;">
+              <label
+                style="display:flex; align-items:center; gap:6px; font-size:14px; font-weight:600; color:#2d3748; cursor:pointer;">
+                <input type="radio" name="gstType" value="cgst_sgst" [(ngModel)]="offer.gstType"
+                  (ngModelChange)="onGstTypeChange()" />
+                CGST + SGST
+              </label>
+              <label
+                style="display:flex; align-items:center; gap:6px; font-size:14px; font-weight:600; color:#2d3748; cursor:pointer;">
+                <input type="radio" name="gstType" value="igst" [(ngModel)]="offer.gstType"
+                  (ngModelChange)="onGstTypeChange()" />
+                IGST
+              </label>
+            </div>
+          </div>
+
+          <!-- CGST + SGST breakdown -->
+          <ng-container *ngIf="offer.gstType === 'cgst_sgst'">
+            <div class="summary-row">
+              <span class="summary-label">CGST (9%):</span>
+              <span class="summary-value">₹{{ offer.cgst | number:'1.2-2' }}</span>
+            </div>
+            <div class="summary-row">
+              <span class="summary-label">SGST (9%):</span>
+              <span class="summary-value">₹{{ offer.sgst | number:'1.2-2' }}</span>
+            </div>
+          </ng-container>
+
+          <!-- IGST breakdown -->
+          <ng-container *ngIf="offer.gstType === 'igst'">
+            <div class="summary-row">
+              <span class="summary-label">IGST (18%):</span>
+              <span class="summary-value">₹{{ offer.igst | number:'1.2-2' }}</span>
+            </div>
+          </ng-container>
+
+          <div class="summary-row" style="opacity:0.6; font-size:13px;">
+            <span class="summary-label" style="font-size:13px;">Total GST (18%):</span>
+            <span class="summary-value" style="font-size:14px;">₹{{ offer.gst | number:'1.2-2' }}</span>
+          </div>
+
+          <div class="summary-divider"></div>
+          <div class="summary-row summary-total">
+            <span class="summary-label">Grand Total:</span>
+            <span class="summary-value">₹{{ offer.grandTotal | number:'1.2-2' }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- OFFER TERMS -->
+      <div class="section-card">
+        <h3 class="section-header">
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+            <path
+              d="M13.5 1.5H4.5A1.5 1.5 0 003 3v12a1.5 1.5 0 001.5 1.5h9a1.5 1.5 0 001.5-1.5V3a1.5 1.5 0 00-1.5-1.5zM6 6h6M6 9h6M6 12h3"
+              stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+          </svg>
+          Offer Terms
+        </h3>
+
+        <div class="row-2">
+          <div class="form-group">
+            <label class="form-label">Payment Terms</label>
+            <input type="text" class="form-input" [(ngModel)]="offer.paymentTerms" name="payment"
+              placeholder="e.g. 50% advance, 50% on delivery" />
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Offer Validity</label>
+            <input type="text" class="form-input" [(ngModel)]="offer.validity" name="validity"
+              placeholder="e.g. 30 days" />
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Terms & Conditions</label>
+          <textarea class="form-textarea" [(ngModel)]="offer.terms" name="terms" rows="4"
+            placeholder="Enter Terms & Conditions"></textarea>
+        </div>
+      </div>
+
+      <!-- ACTION BUTTONS -->
+      <div class="form-actions">
+        <button type="button" class="btn btn-cancel" (click)="goBackToList()">Cancel</button>
+        <button type="button" class="btn btn-save" (click)="saveOffer()">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path
+              d="M13.333 7.333v6a1.333 1.333 0 01-1.333 1.334H4a1.333 1.333 0 01-1.333-1.334v-9.333A1.333 1.333 0 014 2.667h5.333"
+              stroke="currentColor" stroke-width="1.5" />
+          </svg>
+          Save Offer
+        </button>
+      </div>
+
+    </form>
+  </div>
+</div>
+
+<!-- INQUIRY POPUP -->
+<div *ngIf="showInquiryPopup" class="modal-overlay" (click)="showInquiryPopup = false">
+  <div class="modal-content inquiry-popup-modal" (click)="$event.stopPropagation()">
+    <div class="modal-header">
+      <h2 class="modal-title">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" class="modal-icon">
+          <path
+            d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
+            stroke="currentColor" stroke-width="2" />
+        </svg>
+        Select Inquiry
+      </h2>
+      <button class="modal-close" (click)="showInquiryPopup = false">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+          <path d="M15 5L5 15M5 5l10 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+        </svg>
+      </button>
+    </div>
+
+    <div class="modal-body">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Inquiry No</th>
+            <th>Date</th>
+            <th>Items Count</th>
+            <th class="actions-column">Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let iq of inquiries">
+            <td>{{ getDisplayInquiryId(iq.id) }}</td>
+            <td>{{ iq.date | date:'dd/MM/yyyy' }}</td>
+            <td>
+              <span class="badge badge-count">{{ iq.items.length }} items</span>
+            </td>
+            <td class="actions-column">
+              <button class="btn btn-sm btn-primary" (click)="selectInquiry(iq)">
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  <path d="M11.667 7H2.333M7 2.333v9.334" stroke="currentColor" stroke-width="1.5"
+                    stroke-linecap="round" />
+                </svg>
+                Use This
+              </button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
