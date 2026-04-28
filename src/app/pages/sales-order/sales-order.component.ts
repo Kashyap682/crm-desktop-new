@@ -92,6 +92,26 @@ export class SalesOrderComponent implements OnInit, AfterViewInit {
     private cdr: ChangeDetectorRef
   ) { }
 
+  private normalizeText(value: any): string {
+    return String(value || '').trim().toLowerCase();
+  }
+
+  private toInquiryId(value: any): number | null {
+    if (value === null || value === undefined) return null;
+    if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+    const raw = String(value).trim();
+    if (!raw) return null;
+    const match = raw.match(/INQ-(\d+)/i);
+    if (match) return parseInt(match[1], 10);
+    const num = Number(raw);
+    return Number.isFinite(num) ? num : null;
+  }
+
+  private toDisplayInquiryId(value: any): string {
+    const id = this.toInquiryId(value);
+    return id ? `INQ-${String(id).padStart(3, '0')}` : '';
+  }
+
   // ===== LIFECYCLE HOOKS =====
 
   async ngOnInit(): Promise<void> {
@@ -363,11 +383,13 @@ export class SalesOrderComponent implements OnInit, AfterViewInit {
         try {
           const allInquiries: any[] = await this.dbService.getAll('inquiries');
           const custInquiries = allInquiries.filter(
-            (inq: any) => (inq.companyName || '').toLowerCase() === selectedCompanyName.toLowerCase()
+            (inq: any) =>
+              this.normalizeText(inq.companyName) === this.normalizeText(selectedCompanyName) ||
+              this.normalizeText(inq.customerName) === this.normalizeText(customer.name)
           );
           if (custInquiries.length > 0) {
             const last = custInquiries[custInquiries.length - 1];
-            this.inquiryId = last.id ? `INQ-${String(last.id).padStart(3, '0')}` : '';
+            this.inquiryId = this.toDisplayInquiryId(last.id);
           }
         } catch { this.inquiryId = ''; }
 
@@ -414,12 +436,21 @@ export class SalesOrderComponent implements OnInit, AfterViewInit {
       this.cdr.detectChanges();
 
       const allOffers = await this.dbService.getAll('offers');
-      const selected = companyName.toLowerCase().trim();
+      const selected = this.normalizeText(companyName);
 
       this.availableOffers = allOffers.filter((o: any) => {
         if (o.status === 'superseded') return false;
-        const name = (o.customerName || '').toLowerCase().trim();
-        return name === selected || name.includes(selected) || selected.includes(name);
+        const status = this.normalizeText(o.offerStatus);
+        const isOrderReceived = status === 'order_received' || status === 'order received';
+        if (!isOrderReceived) return false;
+
+        const customerName = this.normalizeText(o.customerName);
+        const snapshotCompany = this.normalizeText(o.customerSnapshot?.companyName);
+        const snapshotName = this.normalizeText(o.customerSnapshot?.name);
+        const candidates = [customerName, snapshotCompany, snapshotName].filter(Boolean);
+        return candidates.some((name) =>
+          name === selected || name.includes(selected) || selected.includes(name)
+        );
       });
 
       if (this.availableOffers.length > 0) {
@@ -462,6 +493,7 @@ export class SalesOrderComponent implements OnInit, AfterViewInit {
       this.paymentTerms = this.normalizePaymentTerms(offer.paymentTerms);
 
       if (offer.gstType) this.gstType = offer.gstType;
+      this.inquiryId = this.toDisplayInquiryId(offer.inquiryNo ?? offer.inquiryId ?? this.inquiryId);
 
       // Autofill PO fields if a PO already exists for this offer
       try {

@@ -120,7 +120,7 @@ export class OffersComponent {
     if (!decision) return [];
     const offeredInquiryIds = new Set(
       this.offers
-        .map((o: any) => this.toInquiryId(o.inquiryNo))
+        .map((o: any) => this.toInquiryId(o.inquiryNo ?? o.inquiryId ?? o.inquiryRef))
         .filter((id: any) => id != null)
     );
     return this.inquiries.filter(
