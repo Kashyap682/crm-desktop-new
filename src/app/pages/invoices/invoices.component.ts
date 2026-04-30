@@ -57,6 +57,17 @@ export class InvoicesComponent implements OnInit {
 
   constructor(private db: DBService) { }
 
+  private toInquiryId(value: any): number | null {
+    if (value === null || value === undefined) return null;
+    if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+    const raw = String(value).trim();
+    if (!raw) return null;
+    const match = raw.match(/INQ-(\d+)/i);
+    if (match) return parseInt(match[1], 10);
+    const num = Number(raw);
+    return Number.isFinite(num) ? num : null;
+  }
+
   activeMenuId: any = null;
 
   toggleActionMenu(event: Event, id: any) {
@@ -347,17 +358,37 @@ export class InvoicesComponent implements OnInit {
     if (so.freightCharges)  this.invoiceForm.freightCharges = so.freightCharges;
     if (so.transportMode)   this.invoiceForm.transport.mode = so.transportMode;
     if (so.transporterName) this.invoiceForm.transport.name = so.transporterName;
+    if (so.vehicleNo)       this.invoiceForm.transport.vehicleNo = so.vehicleNo;
+    if (so.lrNo)            this.invoiceForm.transport.lrNo = so.lrNo;
     if (so.paymentTerms)    this.invoiceForm.paymentTerms   = so.paymentTerms;
     if (so.expectedDeliveryDate) this.invoiceForm.dueDate   = so.expectedDeliveryDate;
+    if (so.poNo && !this.invoiceForm.internalRefNo) this.invoiceForm.internalRefNo = so.poNo;
+    if (so.poDate && !this.invoiceForm.remarks) this.invoiceForm.remarks = `PO Date: ${so.poDate}`;
+
+    const soSupplyType = String(so.gstType || '').toLowerCase();
+    if (soSupplyType === 'igst') {
+      this.invoiceForm.supplyType = 'IGST';
+    } else if (soSupplyType === 'cgst_sgst') {
+      this.invoiceForm.supplyType = 'GST';
+    }
+
+    if (!this.invoiceForm.supplyStateCode) {
+      this.invoiceForm.supplyStateCode =
+        this.invoiceForm.billTo.supplyStateCode || billingStateCode || '';
+    }
+    if (!this.invoiceForm.placeOfSupply) {
+      this.invoiceForm.placeOfSupply =
+        this.invoiceForm.billTo.placeOfSupply || customer?.billing?.city || customer?.officeAddress?.city || '';
+    }
 
     // ── 4. Fallback: offer linked to this SO's inquiry ────────────────
     const inquiryRef: string = so.inquiryId || '';
     const inqMatch = inquiryRef.match(/INQ-(\d+)/i);
-    const inqNumId = inqMatch ? parseInt(inqMatch[1]) : null;
+    const inqNumId = inqMatch ? parseInt(inqMatch[1], 10) : this.toInquiryId(inquiryRef);
 
     if (inqNumId) {
       const offer = this.allOffers.find((o: any) =>
-        o.inquiryNo === inqNumId && o.status !== 'superseded'
+        this.toInquiryId(o.inquiryNo) === inqNumId && o.status !== 'superseded'
       );
       if (offer) {
         if (!this.invoiceForm.paymentTerms && offer.paymentTerms)
@@ -374,7 +405,7 @@ export class InvoicesComponent implements OnInit {
       }
 
       // Fallback to inquiry for any still-missing item data
-      const inquiry = this.inquiries.find((i: any) => i.id === inqNumId);
+      const inquiry = this.inquiries.find((i: any) => this.toInquiryId(i.id) === inqNumId);
       if (inquiry && this.invoiceForm.items.length === 0 && inquiry.items?.length) {
         this.invoiceForm.items = inquiry.items.map((it: any, idx: number) => {
           const invIt = this.inventoryItems.find((p: any) =>

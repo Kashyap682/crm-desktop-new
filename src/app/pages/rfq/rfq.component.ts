@@ -90,6 +90,17 @@ export class RfqComponent implements OnInit {
 
   constructor(private dbService: DBService) { }
 
+  private toInquiryId(value: any): number | null {
+    if (value === null || value === undefined) return null;
+    if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+    const raw = String(value).trim();
+    if (!raw) return null;
+    const match = raw.match(/INQ-(\d+)/i);
+    if (match) return parseInt(match[1], 10);
+    const num = Number(raw);
+    return Number.isFinite(num) ? num : null;
+  }
+
   async ngOnInit() {
     await this.loadInquiries();
     await this.loadVendors();
@@ -161,9 +172,10 @@ export class RfqComponent implements OnInit {
     if (!displayId) return;
     // Match by display id like "INQ-001 | Company" or raw numeric id
     const match = displayId.match(/INQ-(\d+)/i);
+    const selectedId = this.toInquiryId(displayId);
     const inq = match
-      ? this.inquiries.find((i: any) => i.id === parseInt(match[1]))
-      : this.inquiries.find((i: any) => i.inquiryId === displayId);
+      ? this.inquiries.find((i: any) => this.toInquiryId(i.id) === parseInt(match[1], 10))
+      : this.inquiries.find((i: any) => this.toInquiryId(i.id) === selectedId || i.inquiryId === displayId);
     if (!inq) return;
 
     this.rfqDate = inq.date || this.rfqDate;
