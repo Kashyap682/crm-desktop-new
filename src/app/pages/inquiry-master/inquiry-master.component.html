@@ -239,7 +239,12 @@
               <option value="WhatsApp">WhatsApp</option>
               <option value="Walk-In">Walk-In</option>
               <option value="Reference">Reference</option>
+              <option value="Online">Online</option>
+              <option value="Other">Other</option>
             </select>
+            <input *ngIf="currentInquiry!.inquiryType === 'Other'" type="text" class="form-input"
+              style="margin-top:6px" [(ngModel)]="currentInquiry!.inquiryTypeCustom"
+              name="inquiryTypeCustom" placeholder="Specify inquiry mode" />
           </div>
           <div class="form-group">
             <label class="form-label">Company Name <span class="required">*</span></label>
@@ -254,12 +259,10 @@
         <div class="row-2">
           <div class="form-group">
             <label class="form-label">Customer Name</label>
-            <div class="autofill-wrapper">
-              <input type="text" class="form-input readonly-field" [(ngModel)]="currentInquiry!.customerName"
-                name="customerName" readonly
-                [placeholder]="currentInquiry!.customerName ? '' : 'Auto-filled when company is selected'" />
-              <span class="autofill-badge" *ngIf="currentInquiry!.customerName">Auto-filled</span>
-            </div>
+            <select class="form-select" [(ngModel)]="currentInquiry!.customerName" name="customerName">
+              <option value="">Select Contact</option>
+              <option *ngFor="let n of contactOptions" [value]="n">{{ n }}</option>
+            </select>
           </div>
           <div class="form-group">
             <label class="form-label">Office Address</label>
@@ -275,7 +278,14 @@
         <div class="row-2">
           <div class="form-group">
             <label class="form-label">Mob No.</label>
-            <input type="text" class="form-input" [(ngModel)]="currentInquiry!.customerPhone" name="customerPhone" />
+            <div style="display:flex;gap:6px">
+              <select [ngModel]="currentInquiry!.customerPhoneCode ?? '+91'"
+                (ngModelChange)="currentInquiry!.customerPhoneCode=$event"
+                name="customerPhoneCode" class="form-select" style="width:80px;flex-shrink:0">
+                <option *ngFor="let cc of countryCodes" [value]="cc">{{ cc }}</option>
+              </select>
+              <input type="text" class="form-input" [(ngModel)]="currentInquiry!.customerPhone" name="customerPhone" />
+            </div>
           </div>
           <div class="form-group">
             <label class="form-label">Email ID</label>
@@ -283,23 +293,6 @@
           </div>
         </div>
 
-        <div class="row-2">
-          <div class="form-group">
-            <label class="form-label">Inquiry Decision</label>
-            <select class="form-select" [(ngModel)]="currentInquiry!.decision" name="decision">
-              <option value="">Select</option>
-              <option value="Under Negotiation">Under Negotiation</option>
-              <option value="Order Received">Order Received</option>
-              <option value="Order Lost">Order Lost</option>
-              <option value="Rejected">Rejected</option>
-            </select>
-          </div>
-          <div class="form-group" *ngIf="currentInquiry!.decision === 'Rejected'">
-            <label class="form-label">Rejection Reason</label>
-            <input type="text" class="form-input" [(ngModel)]="currentInquiry!.rejectionReason"
-              name="rejectionReason" />
-          </div>
-        </div>
       </div>
 
       <!-- PRODUCT DETAILS -->
@@ -450,10 +443,6 @@
               <div class="order-details-title">Order Details</div>
               <div class="row-4">
                 <div class="form-group">
-                  <label class="form-label">Qty</label>
-                  <input type="number" class="form-input" [ngModel]="it.qty" (ngModelChange)="it.qty = +$event" name="qty{{i}}" min="1" step="1" />
-                </div>
-                <div class="form-group">
                   <label class="form-label">UOM</label>
                   <select class="form-select" [(ngModel)]="it.uom" name="uom{{i}}">
                     <option value="">Select UOM</option>
@@ -467,6 +456,10 @@
                     <option value="Box">Box</option>
                     <option value="Set">Set</option>
                   </select>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Qty</label>
+                  <input type="number" class="form-input" [ngModel]="it.qty" (ngModelChange)="it.qty = +$event" name="qty{{i}}" min="1" step="1" />
                 </div>
                 <div class="form-group">
                   <label class="form-label">Stock</label>
@@ -597,8 +590,8 @@
                 <th>Make</th>
                 <th>HSN</th>
                 <th>Specifications</th>
-                <th>Qty</th>
                 <th>UOM</th>
+                <th>Qty</th>
               </tr>
             </thead>
             <tbody>
@@ -620,11 +613,18 @@
                   <div *ngIf="it.color">Color: {{ it.color }}</div>
                   <span *ngIf="!it.form && !it.density && !it.thickness && !it.fsk && !it.size && !it.grade && !it.alloy && !it.temper && !it.nb && !it.maxTemp && !it.color">—</span>
                 </td>
-                <td>{{ it.qty }}</td>
                 <td>{{ it.uom }}</td>
+                <td>{{ it.qty }}</td>
               </tr>
             </tbody>
           </table>
+        </div>
+      </div>
+
+      <div class="info-section" *ngIf="viewInquiryRecord!.notes">
+        <div class="info-item full-width">
+          <span class="info-label">Notes</span>
+          <span class="info-value">{{ viewInquiryRecord!.notes }}</span>
         </div>
       </div>
     </div>

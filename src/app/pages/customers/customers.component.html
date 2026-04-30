@@ -178,6 +178,13 @@
 
           <td class="actions-column">
             <div class="action-buttons-group">
+              <button (click)="openPreviewModal(customer)" class="btn-icon btn-view" title="Preview">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <path d="M.667 8S3.333 2.667 8 2.667 15.333 8 15.333 8 12.667 13.333 8 13.333.667 8 .667 8z"
+                    stroke="currentColor" stroke-width="1.5" />
+                  <circle cx="8" cy="8" r="2" stroke="currentColor" stroke-width="1.5" />
+                </svg>
+              </button>
               <button (click)="openEditModal(i)" class="btn-icon btn-edit" title="Edit">
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                   <path d="M11.333 2A1.886 1.886 0 0114 4.667l-9 9-3.667 1 1-3.667 9-9z" stroke="currentColor"
@@ -203,6 +210,135 @@
         </tr>
       </tbody>
     </table>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     CUSTOMER PREVIEW MODAL
+════════════════════════════════════════════════════════ -->
+<div *ngIf="showPreviewModal && previewCustomer" class="modal-overlay" (click)="closePreviewModal()">
+  <div class="modal-content customer-modal" (click)="$event.stopPropagation()">
+
+    <div class="modal-header">
+      <h2 class="modal-title">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" class="modal-icon">
+          <path d="M1 12S5 4 12 4s11 8 11 8-4 8-11 8S1 12 1 12z" stroke="currentColor" stroke-width="2"/>
+          <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/>
+        </svg>
+        Customer Preview
+      </h2>
+      <button class="modal-close" (click)="closePreviewModal()">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+          <path d="M15 5L5 15M5 5l10 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+        </svg>
+      </button>
+    </div>
+
+    <div style="overflow-y:auto; max-height:70vh; padding: 0 4px;">
+
+      <!-- Basic Info -->
+      <div class="section-card">
+        <h3 class="section-header" style="font-size:14px;">Basic Information</h3>
+        <div class="info-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <div><span style="font-size:11px;color:#64748b;display:block;">Customer ID</span><strong>{{ previewCustomer.customerId || '-' }}</strong></div>
+          <div><span style="font-size:11px;color:#64748b;display:block;">Customer Type</span><strong>{{ previewCustomer.customerType || '-' }}</strong></div>
+          <div><span style="font-size:11px;color:#64748b;display:block;">Company Name</span><strong>{{ previewCustomer.companyName || '-' }}</strong></div>
+          <div><span style="font-size:11px;color:#64748b;display:block;">Email</span><strong>{{ previewCustomer.email || '-' }}</strong></div>
+          <div><span style="font-size:11px;color:#64748b;display:block;">Website</span><strong>{{ previewCustomer.website || '-' }}</strong></div>
+          <div><span style="font-size:11px;color:#64748b;display:block;">GSTIN</span><strong>{{ previewCustomer.gstin || '-' }}</strong></div>
+          <div><span style="font-size:11px;color:#64748b;display:block;">PAN</span><strong>{{ previewCustomer.pan || '-' }}</strong></div>
+          <div><span style="font-size:11px;color:#64748b;display:block;">MSME</span><strong>{{ previewCustomer.msme || '-' }}</strong></div>
+        </div>
+      </div>
+
+      <!-- Primary Contact -->
+      <div class="section-card">
+        <h3 class="section-header" style="font-size:14px;">Primary Contact</h3>
+        <div class="info-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <div><span style="font-size:11px;color:#64748b;display:block;">Name</span>
+            <strong>{{ formatContactName(previewCustomer.primaryContact) }}</strong>
+          </div>
+          <div><span style="font-size:11px;color:#64748b;display:block;">Mobile</span><strong>{{ previewCustomer.primaryContact?.mobile || '-' }}</strong></div>
+          <div><span style="font-size:11px;color:#64748b;display:block;">Email</span><strong>{{ previewCustomer.primaryContact?.email || '-' }}</strong></div>
+          <div><span style="font-size:11px;color:#64748b;display:block;">Remarks</span><strong>{{ previewCustomer.primaryContact?.remarks || '-' }}</strong></div>
+        </div>
+      </div>
+
+      <!-- Secondary Contact -->
+      <div class="section-card" *ngIf="previewCustomer.secondaryContact?.firstName">
+        <h3 class="section-header" style="font-size:14px;">Secondary Contact</h3>
+        <div class="info-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <div><span style="font-size:11px;color:#64748b;display:block;">Name</span>
+            <strong>{{ formatContactName(previewCustomer.secondaryContact) }}</strong>
+          </div>
+          <div><span style="font-size:11px;color:#64748b;display:block;">Mobile</span><strong>{{ previewCustomer.secondaryContact?.mobile || '-' }}</strong></div>
+          <div><span style="font-size:11px;color:#64748b;display:block;">Email</span><strong>{{ previewCustomer.secondaryContact?.email || '-' }}</strong></div>
+        </div>
+      </div>
+
+      <!-- Office Address -->
+      <div class="section-card">
+        <h3 class="section-header" style="font-size:14px;">Office Address</h3>
+        <p style="margin:0;font-size:13px;line-height:1.7;">
+          {{ previewCustomer.officeAddress?.line1 }}<span *ngIf="previewCustomer.officeAddress?.line2">, {{ previewCustomer.officeAddress?.line2 }}</span><br/>
+          {{ previewCustomer.officeAddress?.state }}<span *ngIf="previewCustomer.officeAddress?.city">, {{ previewCustomer.officeAddress?.city }}</span>
+          <span *ngIf="previewCustomer.officeAddress?.pincode"> - {{ previewCustomer.officeAddress?.pincode }}</span><br/>
+          {{ previewCustomer.officeAddress?.country }}
+        </p>
+      </div>
+
+      <!-- Billing Address -->
+      <div class="section-card">
+        <h3 class="section-header" style="font-size:14px;">Billing Address</h3>
+        <p style="margin:0;font-size:13px;line-height:1.7;">
+          {{ previewCustomer.billing?.line1 }}<span *ngIf="previewCustomer.billing?.line2">, {{ previewCustomer.billing?.line2 }}</span><br/>
+          {{ previewCustomer.billing?.state }}<span *ngIf="previewCustomer.billing?.city">, {{ previewCustomer.billing?.city }}</span>
+          <span *ngIf="previewCustomer.billing?.pincode"> - {{ previewCustomer.billing?.pincode }}</span><br/>
+          {{ previewCustomer.billing?.country }}
+          <span *ngIf="previewCustomer.billing?.gstin"><br/>GSTIN: {{ previewCustomer.billing?.gstin }}</span>
+        </p>
+      </div>
+
+      <!-- Shipping Addresses -->
+      <div class="section-card" *ngIf="previewCustomer.shippingAddresses?.length">
+        <h3 class="section-header" style="font-size:14px;">Shipping Address(es)</h3>
+        <div *ngFor="let sa of previewCustomer.shippingAddresses; let si = index"
+          [style.margin-top]="si > 0 ? '12px' : '0'">
+          <p style="margin:0 0 2px;font-size:12px;font-weight:600;color:#64748b;">{{ si === 0 ? 'Shipping Address' : 'Shipping Address ' + (si+1) }}</p>
+          <p style="margin:0;font-size:13px;line-height:1.7;">
+            {{ sa?.line1 }}<span *ngIf="sa?.line2">, {{ sa?.line2 }}</span><br/>
+            {{ sa?.state }}<span *ngIf="sa?.city">, {{ sa?.city }}</span>
+            <span *ngIf="sa?.pincode"> - {{ sa?.pincode }}</span><br/>
+            {{ sa?.country }}
+          </p>
+        </div>
+      </div>
+
+      <!-- Product Preferences -->
+      <div class="section-card" *ngIf="previewCustomer.productMaterials?.length">
+        <h3 class="section-header" style="font-size:14px;">Product Preferences</h3>
+        <div *ngFor="let mat of previewCustomer.productMaterials; let mi = index"
+          [style.margin-top]="mi > 0 ? '8px' : '0'">
+          <strong style="font-size:13px;">{{ mat.material || '—' }}</strong>
+          <span *ngIf="mat.form1 || mat.form2 || mat.form3"
+            style="font-size:12px;color:#64748b;margin-left:8px;">
+            {{ formatMaterialForms(mat) }}
+          </span>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="modal-footer">
+      <button type="button" class="btn btn-secondary" (click)="closePreviewModal()">Close</button>
+      <button type="button" class="btn btn-primary" (click)="downloadCustomerPDF(previewCustomer)">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <path d="M14 10v2.667A1.333 1.333 0 0112.667 14H3.333A1.333 1.333 0 012 12.667V10M4.667 6.667L8 10m0 0l3.333-3.333M8 10V2"
+            stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+        Download PDF
+      </button>
+    </div>
   </div>
 </div>
 
@@ -244,8 +380,7 @@
         <div class="row-2">
           <div class="form-group">
             <label class="form-label">Customer ID</label>
-            <input type="text" class="form-input readonly-field" [(ngModel)]="newCustomer.customerId" name="cid"
-              readonly />
+            <input type="text" class="form-input readonly-field" [(ngModel)]="newCustomer.customerId" name="cid" readonly />
           </div>
           <div class="form-group">
             <label class="form-label">Customer Type</label>
@@ -258,12 +393,8 @@
 
         <div class="row-2">
           <div class="form-group">
-            <label class="form-label">Customer Name <span class="required">*</span></label>
-            <input type="text" class="form-input" [(ngModel)]="newCustomer.name" name="name" required />
-          </div>
-          <div class="form-group">
             <label class="form-label">Company Name <span class="required">*</span></label>
-            <input type="text" class="form-input" [(ngModel)]="newCustomer.companyName" name="company" />
+            <input type="text" class="form-input" [(ngModel)]="newCustomer.companyName" name="company" required />
           </div>
         </div>
 
@@ -273,8 +404,7 @@
             <label class="file-upload-btn">
               <input type="file" accept=".png,.jpg,.jpeg,.svg,.webp" (change)="onLogoSelect($event)" />
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                <path
-                  d="M14 10v2.667A1.333 1.333 0 0112.667 14H3.333A1.333 1.333 0 012 12.667V10M11.333 5.333L8 2M8 2L4.667 5.333M8 2v8"
+                <path d="M14 10v2.667A1.333 1.333 0 0112.667 14H3.333A1.333 1.333 0 012 12.667V10M11.333 5.333L8 2M8 2L4.667 5.333M8 2v8"
                   stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
               </svg>
               Upload Logo
@@ -287,17 +417,11 @@
           </div>
         </div>
 
-        <div class="row-3">
+        <div class="row-2">
           <div class="form-group">
-            <div class="form-group">
-              <label class="form-label">Landline No.</label>
-              <input type="text" class="form-input" [(ngModel)]="newCustomer.landline" name="landline"
-                placeholder="e.g. 022-12345678" />
-            </div>
             <label class="form-label">Email</label>
             <input type="email" class="form-input" [(ngModel)]="newCustomer.email" name="email" />
           </div>
-
           <div class="form-group">
             <label class="form-label">Website</label>
             <input type="text" class="form-input" [(ngModel)]="newCustomer.website" name="website"
@@ -312,8 +436,7 @@
             <label class="file-upload-btn">
               <input type="file" accept=".pdf,.jpg,.jpeg,.png" (change)="onPanFileSelect($event)" />
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                <path
-                  d="M14 10v2.667A1.333 1.333 0 0112.667 14H3.333A1.333 1.333 0 012 12.667V10M11.333 5.333L8 2M8 2L4.667 5.333M8 2v8"
+                <path d="M14 10v2.667A1.333 1.333 0 0112.667 14H3.333A1.333 1.333 0 012 12.667V10M11.333 5.333L8 2M8 2L4.667 5.333M8 2v8"
                   stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
               </svg>
               Upload PAN Document
@@ -326,8 +449,7 @@
             <label class="file-upload-btn">
               <input type="file" accept=".pdf,.jpg,.jpeg,.png" (change)="onMsmeFileSelect($event)" />
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                <path
-                  d="M14 10v2.667A1.333 1.333 0 0112.667 14H3.333A1.333 1.333 0 012 12.667V10M11.333 5.333L8 2M8 2L4.667 5.333M8 2v8"
+                <path d="M14 10v2.667A1.333 1.333 0 0112.667 14H3.333A1.333 1.333 0 012 12.667V10M11.333 5.333L8 2M8 2L4.667 5.333M8 2v8"
                   stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
               </svg>
               Upload MSME Certificate
@@ -348,10 +470,111 @@
           </svg>
           Office Address
         </h3>
-
         <ng-container [ngTemplateOutlet]="addrBlock"
-          [ngTemplateOutletContext]="{ addr: newCustomer.officeAddress, prefix: 'oa_' }">
+          [ngTemplateOutletContext]="{ addr: newCustomer.officeAddress, prefix: 'oa_', hideGst: true }">
         </ng-container>
+      </div>
+
+      <!-- ── PRIMARY CONTACT PERSON ── -->
+      <div class="section-card">
+        <h3 class="section-header">
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+            <path d="M12 15.75v-1.5a3 3 0 00-3-3H4.5a3 3 0 00-3 3v1.5M7.5 9.75a3 3 0 100-6 3 3 0 000 6zM15 6.75v4.5M12.75 9h4.5"
+              stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+          Primary Contact Person
+        </h3>
+        <div class="row-3">
+          <div class="form-group">
+            <label class="form-label">Title</label>
+            <select class="form-select" [(ngModel)]="newCustomer.primaryContact.title" name="pc_title">
+              <option value="">-</option>
+              <option>Mr</option><option>Mrs</option><option>Ms</option><option>Dr</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">First Name</label>
+            <input type="text" class="form-input" [(ngModel)]="newCustomer.primaryContact.firstName" name="pc_first" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Last Name</label>
+            <input type="text" class="form-input" [(ngModel)]="newCustomer.primaryContact.lastName" name="pc_last" />
+          </div>
+        </div>
+        <div class="row-2">
+          <div class="form-group">
+            <label class="form-label">Mobile No.</label>
+            <div style="display:flex;gap:6px">
+              <select [ngModel]="newCustomer.primaryContact.mobileCode ?? '+91'"
+                (ngModelChange)="newCustomer.primaryContact.mobileCode=$event"
+                name="pc_mobileCode" class="form-select" style="width:80px;flex-shrink:0">
+                <option *ngFor="let cc of countryCodes" [value]="cc">{{ cc }}</option>
+              </select>
+              <input type="text" class="form-input" [(ngModel)]="newCustomer.primaryContact.mobile" name="pc_mobile" />
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Email</label>
+            <input type="email" class="form-input" [(ngModel)]="newCustomer.primaryContact.email" name="pc_email" />
+          </div>
+        </div>
+        <div class="row-2">
+          <div class="form-group">
+            <label class="form-label">Remarks</label>
+            <input type="text" class="form-input" [(ngModel)]="newCustomer.primaryContact.remarks" name="pc_remarks" />
+          </div>
+        </div>
+      </div>
+
+      <!-- ── SECONDARY CONTACT PERSON ── -->
+      <div class="section-card">
+        <h3 class="section-header">
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+            <path d="M12 15.75v-1.5a3 3 0 00-3-3H4.5a3 3 0 00-3 3v1.5M7.5 9.75a3 3 0 100-6 3 3 0 000 6zM14.25 6.75a3 3 0 010 4.243"
+              stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+          Secondary Contact Person
+        </h3>
+        <div class="row-3">
+          <div class="form-group">
+            <label class="form-label">Title</label>
+            <select class="form-select" [(ngModel)]="newCustomer.secondaryContact.title" name="sc_title">
+              <option value="">-</option>
+              <option>Mr</option><option>Mrs</option><option>Ms</option><option>Dr</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">First Name</label>
+            <input type="text" class="form-input" [(ngModel)]="newCustomer.secondaryContact.firstName" name="sc_first" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Last Name</label>
+            <input type="text" class="form-input" [(ngModel)]="newCustomer.secondaryContact.lastName" name="sc_last" />
+          </div>
+        </div>
+        <div class="row-2">
+          <div class="form-group">
+            <label class="form-label">Mobile No.</label>
+            <div style="display:flex;gap:6px">
+              <select [ngModel]="newCustomer.secondaryContact.mobileCode ?? '+91'"
+                (ngModelChange)="newCustomer.secondaryContact.mobileCode=$event"
+                name="sc_mobileCode" class="form-select" style="width:80px;flex-shrink:0">
+                <option *ngFor="let cc of countryCodes" [value]="cc">{{ cc }}</option>
+              </select>
+              <input type="text" class="form-input" [(ngModel)]="newCustomer.secondaryContact.mobile" name="sc_mobile" />
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Email</label>
+            <input type="email" class="form-input" [(ngModel)]="newCustomer.secondaryContact.email" name="sc_email" />
+          </div>
+        </div>
+        <div class="row-2">
+          <div class="form-group">
+            <label class="form-label">Remarks</label>
+            <input type="text" class="form-input" [(ngModel)]="newCustomer.secondaryContact.remarks" name="sc_remarks" />
+          </div>
+        </div>
       </div>
 
       <!-- ── BILLING ADDRESS ── -->
@@ -373,7 +596,6 @@
           [ngTemplateOutletContext]="{ addr: newCustomer.billing, prefix: 'b_' }">
         </ng-container>
 
-        <!-- Second billing address -->
         <div *ngIf="showBilling2" style="margin-top:20px; border-top:2px dashed #e2e8f0; padding-top:20px;">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
             <span style="font-weight:700; font-size:14px; color:#001F3F;">Billing Address 2</span>
@@ -433,94 +655,6 @@
         </button>
       </div>
 
-      <!-- ── PRIMARY CONTACT PERSON ── -->
-      <div class="section-card">
-        <h3 class="section-header">
-          <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-            <path
-              d="M12 15.75v-1.5a3 3 0 00-3-3H4.5a3 3 0 00-3 3v1.5M7.5 9.75a3 3 0 100-6 3 3 0 000 6zM15 6.75v4.5M12.75 9h4.5"
-              stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
-          </svg>
-          Primary Contact Person
-        </h3>
-        <div class="row-2">
-          <div class="form-group">
-            <label class="form-label">First Name</label>
-            <input type="text" class="form-input" [(ngModel)]="newCustomer.primaryContact.firstName" name="pc_first" />
-          </div>
-          <div class="form-group">
-            <label class="form-label">Last Name</label>
-            <input type="text" class="form-input" [(ngModel)]="newCustomer.primaryContact.lastName" name="pc_last" />
-          </div>
-        </div>
-        <div class="row-2">
-          <div class="form-group">
-            <label class="form-label">Mobile No.</label>
-            <input type="text" class="form-input" [(ngModel)]="newCustomer.primaryContact.mobile" name="pc_mobile" />
-          </div>
-          <div class="form-group">
-            <label class="form-label">Email</label>
-            <input type="email" class="form-input" [(ngModel)]="newCustomer.primaryContact.email" name="pc_email" />
-          </div>
-        </div>
-        <div class="row-2">
-          <div class="form-group">
-            <label class="form-label">Location</label>
-            <input type="text" class="form-input" [(ngModel)]="newCustomer.primaryContact.location"
-              name="pc_location" />
-          </div>
-          <div class="form-group">
-            <label class="form-label">Remarks</label>
-            <input type="text" class="form-input" [(ngModel)]="newCustomer.primaryContact.remarks" name="pc_remarks" />
-          </div>
-        </div>
-      </div>
-
-      <!-- ── SECONDARY CONTACT PERSON ── -->
-      <div class="section-card">
-        <h3 class="section-header">
-          <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-            <path
-              d="M12 15.75v-1.5a3 3 0 00-3-3H4.5a3 3 0 00-3 3v1.5M7.5 9.75a3 3 0 100-6 3 3 0 000 6zM14.25 6.75a3 3 0 010 4.243"
-              stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
-          </svg>
-          Secondary Contact Person
-        </h3>
-        <div class="row-2">
-          <div class="form-group">
-            <label class="form-label">First Name</label>
-            <input type="text" class="form-input" [(ngModel)]="newCustomer.secondaryContact.firstName"
-              name="sc_first" />
-          </div>
-          <div class="form-group">
-            <label class="form-label">Last Name</label>
-            <input type="text" class="form-input" [(ngModel)]="newCustomer.secondaryContact.lastName" name="sc_last" />
-          </div>
-        </div>
-        <div class="row-2">
-          <div class="form-group">
-            <label class="form-label">Mobile No.</label>
-            <input type="text" class="form-input" [(ngModel)]="newCustomer.secondaryContact.mobile" name="sc_mobile" />
-          </div>
-          <div class="form-group">
-            <label class="form-label">Email</label>
-            <input type="email" class="form-input" [(ngModel)]="newCustomer.secondaryContact.email" name="sc_email" />
-          </div>
-        </div>
-        <div class="row-2">
-          <div class="form-group">
-            <label class="form-label">Location</label>
-            <input type="text" class="form-input" [(ngModel)]="newCustomer.secondaryContact.location"
-              name="sc_location" />
-          </div>
-          <div class="form-group">
-            <label class="form-label">Remarks</label>
-            <input type="text" class="form-input" [(ngModel)]="newCustomer.secondaryContact.remarks"
-              name="sc_remarks" />
-          </div>
-        </div>
-      </div>
-
       <!-- ── PRODUCT PREFERENCES ── -->
       <div class="section-card">
         <h3 class="section-header">
@@ -533,31 +667,60 @@
           Product Preferences
         </h3>
 
-        <div class="row-2">
-          <div class="form-group">
-            <label class="form-label">Material</label>
-            <input type="text" class="form-input" [(ngModel)]="newCustomer.productPrefs.material" name="pp_material"
-              placeholder="e.g. Rockwool, Glass Wool" />
+        <div *ngFor="let mat of newCustomer.productMaterials; let mi = index"
+          style="margin-bottom:16px; padding-bottom:16px;"
+          [style.border-bottom]="mi < newCustomer.productMaterials.length - 1 ? '1px dashed #e2e8f0' : 'none'">
+
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <span style="font-size:13px; font-weight:600; color:#334155;">Material {{ mi + 1 }}</span>
+            <button *ngIf="newCustomer.productMaterials.length > 1" type="button" class="btn btn-cancel"
+              style="padding:2px 10px; font-size:11px;" (click)="removeProductMaterial(mi)">Remove</button>
           </div>
-        </div>
-        <div class="row-3">
-          <div class="form-group">
-            <label class="form-label">Form 1</label>
-            <input type="text" class="form-input" [(ngModel)]="newCustomer.productPrefs.form1" name="pp_form1"
-              placeholder="e.g. Slab" />
+
+          <div class="row-2">
+            <div class="form-group" style="position:relative;">
+              <label class="form-label">Material Name</label>
+              <input type="text" class="form-input"
+                [(ngModel)]="mat.material"
+                [name]="'mat_' + mi"
+                placeholder="e.g. Rockwool, Glass Wool"
+                (input)="onMaterialInput(mat.material, mi)"
+                (focus)="onMaterialInput(mat.material, mi)"
+                (blur)="clearMaterialSuggestions()"
+                autocomplete="off" />
+              <div *ngIf="activeMaterialIndex === mi && materialSuggestions.length"
+                style="position:absolute;top:100%;left:0;right:0;background:white;border:1px solid #e2e8f0;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,0.12);z-index:200;max-height:200px;overflow-y:auto;">
+                <div *ngFor="let sug of materialSuggestions"
+                  style="padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid #f1f5f9;"
+                  (mousedown)="pickMaterial(sug, mi)">
+                  {{ sug }}
+                </div>
+              </div>
+            </div>
           </div>
-          <div class="form-group">
-            <label class="form-label">Form 2</label>
-            <input type="text" class="form-input" [(ngModel)]="newCustomer.productPrefs.form2" name="pp_form2"
-              placeholder="e.g. Pipe section" />
-          </div>
-          <div class="form-group">
-            <label class="form-label">Form 3</label>
-            <input type="text" class="form-input" [(ngModel)]="newCustomer.productPrefs.form3" name="pp_form3"
-              placeholder="e.g. Loose wool" />
+
+          <div class="row-3">
+            <div class="form-group">
+              <label class="form-label">Form 1</label>
+              <input type="text" class="form-input" [(ngModel)]="mat.form1" [name]="'mat_f1_' + mi"
+                placeholder="e.g. Slab" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Form 2</label>
+              <input type="text" class="form-input" [(ngModel)]="mat.form2" [name]="'mat_f2_' + mi"
+                placeholder="e.g. Pipe section" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Form 3</label>
+              <input type="text" class="form-input" [(ngModel)]="mat.form3" [name]="'mat_f3_' + mi"
+                placeholder="e.g. Loose wool" />
+            </div>
           </div>
         </div>
 
+        <button type="button" class="btn btn-secondary" style="margin-top:4px;" (click)="addProductMaterial()">
+          + Add Another Material
+        </button>
       </div>
 
       <!-- BUTTONS -->
@@ -576,8 +739,19 @@
   </div>
 </div>
 
+<!-- ─── BILLING CHOICE MODAL ─── -->
+<div *ngIf="showBillingChoiceModal" class="modal-overlay" (click)="showBillingChoiceModal = false">
+  <div class="modal-content" style="max-width:360px;padding:24px;" (click)="$event.stopPropagation()">
+    <h3 style="margin:0 0 16px;font-size:16px;">Which billing address?</h3>
+    <div style="display:flex;gap:12px;">
+      <button type="button" class="btn btn-primary" (click)="applyBillingChoice(1)">Billing Address 1</button>
+      <button type="button" class="btn btn-secondary" (click)="applyBillingChoice(2)">Billing Address 2</button>
+    </div>
+  </div>
+</div>
+
 <!-- ─── REUSABLE ADDRESS BLOCK TEMPLATE ─── -->
-<ng-template #addrBlock let-addr="addr" let-prefix="prefix" let-disabled="disabled">
+<ng-template #addrBlock let-addr="addr" let-prefix="prefix" let-disabled="disabled" let-hideGst="hideGst">
   <div class="row-2">
     <div class="form-group">
       <label class="form-label">Address Line 1</label>
@@ -590,55 +764,56 @@
   </div>
   <div class="row-3">
     <div class="form-group">
+      <label class="form-label">State</label>
+      <select class="form-select" [(ngModel)]="addr.state" [name]="prefix+'state'" [disabled]="disabled">
+        <option value="">Select State</option>
+        <option *ngFor="let s of indianStates" [value]="s">{{ s }}</option>
+      </select>
+    </div>
+    <div class="form-group">
       <label class="form-label">City</label>
       <input type="text" class="form-input" [(ngModel)]="addr.city" [name]="prefix+'city'" [disabled]="disabled" />
     </div>
     <div class="form-group">
-      <label class="form-label">State</label>
-      <input type="text" class="form-input" [(ngModel)]="addr.state" [name]="prefix+'state'" [disabled]="disabled" />
-    </div>
-    <div class="form-group">
       <label class="form-label">Pincode</label>
-      <input type="text" class="form-input" [(ngModel)]="addr.pincode" [name]="prefix+'pincode'"
-        [disabled]="disabled" />
+      <input type="text" class="form-input" [(ngModel)]="addr.pincode" [name]="prefix+'pincode'" [disabled]="disabled"
+        maxlength="6" (change)="lookupPincode(addr, addr.pincode)" />
     </div>
   </div>
   <div class="row-2">
     <div class="form-group">
       <label class="form-label">Country</label>
-      <input type="text" class="form-input" [(ngModel)]="addr.country" [name]="prefix+'country'"
-        [disabled]="disabled" />
+      <select class="form-select" [(ngModel)]="addr.country" [name]="prefix+'country'" [disabled]="disabled">
+        <option value="">Select Country</option>
+        <option *ngFor="let c of countries" [value]="c">{{ c }}</option>
+      </select>
     </div>
-    <div class="form-group">
+    <div *ngIf="!hideGst" class="form-group">
       <label class="form-label">GST No.</label>
       <input type="text" class="form-input" [(ngModel)]="addr.gstin" [name]="prefix+'gstin'" [disabled]="disabled" />
       <label class="file-upload-btn">
         <input type="file" accept=".pdf,.jpg,.jpeg,.png" (change)="readFileToAddr($event, addr, 'gstFile')"
           [disabled]="disabled" />
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-          <path
-            d="M14 10v2.667A1.333 1.333 0 0112.667 14H3.333A1.333 1.333 0 012 12.667V10M11.333 5.333L8 2M8 2L4.667 5.333M8 2v8"
+          <path d="M14 10v2.667A1.333 1.333 0 0112.667 14H3.333A1.333 1.333 0 012 12.667V10M11.333 5.333L8 2M8 2L4.667 5.333M8 2v8"
             stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
         </svg>
         Upload GST Document
       </label>
       <small *ngIf="addr.gstFile" class="file-name">
         <a [href]="addr.gstFile.data" target="_blank" [download]="addr.gstFile.name">📎 {{ addr.gstFile.name }}</a>
-        <button type="button" class="doc-remove-btn" style="margin-left:6px;"
-          (click)="addr.gstFile = undefined">✕</button>
+        <button type="button" class="doc-remove-btn" style="margin-left:6px;" (click)="addr.gstFile = undefined">✕</button>
       </small>
     </div>
   </div>
   <div class="row-2">
     <div class="form-group">
       <label class="form-label">Contact Person</label>
-      <input type="text" class="form-input" [(ngModel)]="addr.contactPerson" [name]="prefix+'cp'"
-        [disabled]="disabled" />
+      <input type="text" class="form-input" [(ngModel)]="addr.contactPerson" [name]="prefix+'cp'" [disabled]="disabled" />
     </div>
     <div class="form-group">
       <label class="form-label">Department</label>
-      <input type="text" class="form-input" [(ngModel)]="addr.department" [name]="prefix+'dept'"
-        [disabled]="disabled" />
+      <input type="text" class="form-input" [(ngModel)]="addr.department" [name]="prefix+'dept'" [disabled]="disabled" />
     </div>
   </div>
   <div class="row-2">
@@ -648,7 +823,13 @@
     </div>
     <div class="form-group">
       <label class="form-label">Mobile No.</label>
-      <input type="text" class="form-input" [(ngModel)]="addr.mobile" [name]="prefix+'mobile'" [disabled]="disabled" />
+      <div style="display:flex;gap:6px">
+        <select [ngModel]="addr.mobileCode ?? '+91'" (ngModelChange)="addr.mobileCode=$event"
+          [name]="prefix+'mobileCode'" [disabled]="disabled" class="form-select" style="width:80px;flex-shrink:0">
+          <option *ngFor="let cc of countryCodes" [value]="cc">{{ cc }}</option>
+        </select>
+        <input type="text" class="form-input" [(ngModel)]="addr.mobile" [name]="prefix+'mobile'" [disabled]="disabled" />
+      </div>
     </div>
   </div>
 </ng-template>

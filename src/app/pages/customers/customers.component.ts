@@ -5,6 +5,8 @@ import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { utils, writeFile } from 'xlsx';
 import { DBService } from '../../service/db.service';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 @Component({
   selector: 'app-customers',
@@ -22,6 +24,11 @@ export class CustomersComponent {
   newCustomer: any = this.getEmptyCustomer();
   sameAsBilling = false;
   showBilling2 = false;
+  showBillingChoiceModal = false;
+  billingChoiceShippingIndex = 0;
+  inventory: any[] = [];
+  materialSuggestions: string[] = [];
+  activeMaterialIndex: number | null = null;
 
   businessVerticals: string[] = [
     'Projects',
@@ -30,6 +37,87 @@ export class CustomersComponent {
   ];
 
   customerTypes = ['Contractor', 'End User', 'Manufacturer', 'Trader'];
+
+  indianStates: string[] = [
+    'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh',
+    'Goa', 'Gujarat', 'Haryana', 'Himachal Pradesh', 'Jharkhand', 'Karnataka',
+    'Kerala', 'Madhya Pradesh', 'Maharashtra', 'Manipur', 'Meghalaya', 'Mizoram',
+    'Nagaland', 'Odisha', 'Punjab', 'Rajasthan', 'Sikkim', 'Tamil Nadu',
+    'Telangana', 'Tripura', 'Uttar Pradesh', 'Uttarakhand', 'West Bengal',
+    'Andaman and Nicobar Islands', 'Chandigarh',
+    'Dadra and Nagar Haveli and Daman and Diu', 'Delhi',
+    'Jammu and Kashmir', 'Ladakh', 'Lakshadweep', 'Puducherry'
+  ];
+
+  countryCodes: string[] = [
+    '+91', '+1', '+44', '+971', '+966', '+65', '+61', '+49', '+86', '+81',
+    '+60', '+62', '+880', '+92', '+94', '+977', '+66', '+84', '+55', '+27'
+  ];
+
+  countries: string[] = [
+    'India',
+    'Afghanistan', 'Australia', 'Bahrain', 'Bangladesh', 'Belgium', 'Bhutan',
+    'Brazil', 'Canada', 'China', 'France', 'Germany', 'Hong Kong', 'Indonesia',
+    'Iran', 'Iraq', 'Italy', 'Japan', 'Kenya', 'Kuwait', 'Malaysia', 'Maldives',
+    'Myanmar', 'Nepal', 'Netherlands', 'New Zealand', 'Nigeria', 'Oman',
+    'Pakistan', 'Philippines', 'Qatar', 'Russia', 'Saudi Arabia', 'Singapore',
+    'South Africa', 'South Korea', 'Sri Lanka', 'Switzerland', 'Thailand',
+    'United Arab Emirates', 'United Kingdom', 'United States of America'
+  ];
+
+  async lookupPincode(addr: any, pincode: string): Promise<void> {
+    if (!pincode || pincode.length !== 6) return;
+    try {
+      const res = await fetch(`https://api.postalpincode.in/pincode/${pincode}`);
+      const data = await res.json();
+      if (data[0]?.Status === 'Success' && data[0]?.PostOffice?.length) {
+        const po = data[0].PostOffice[0];
+        if (po.State) addr.state = po.State;
+        if (po.District) addr.city = po.District;
+      }
+    } catch (_) { /* offline or API error */ }
+  }
+
+  /* ─── Empty material entry ─── */
+  emptyMaterial() {
+    return { material: '', form1: '', form2: '', form3: '' };
+  }
+
+  addProductMaterial() {
+    this.newCustomer.productMaterials.push(this.emptyMaterial());
+    this.materialSuggestions = [];
+  }
+
+  removeProductMaterial(i: number) {
+    if (this.newCustomer.productMaterials.length > 1) {
+      this.newCustomer.productMaterials.splice(i, 1);
+    }
+    this.materialSuggestions = [];
+    this.activeMaterialIndex = null;
+  }
+
+  onMaterialInput(term: string, idx: number) {
+    this.activeMaterialIndex = idx;
+    if (!term?.trim()) { this.materialSuggestions = []; return; }
+    const lower = term.toLowerCase();
+    this.materialSuggestions = this.inventory
+      .map((inv: any) => inv.displayName || inv.name || '')
+      .filter(name => name && name.toLowerCase().includes(lower))
+      .slice(0, 8);
+  }
+
+  pickMaterial(name: string, idx: number) {
+    this.newCustomer.productMaterials[idx].material = name;
+    this.materialSuggestions = [];
+    this.activeMaterialIndex = null;
+  }
+
+  clearMaterialSuggestions() {
+    setTimeout(() => {
+      this.materialSuggestions = [];
+      this.activeMaterialIndex = null;
+    }, 200);
+  }
 
   /* ─── Empty address object ─── */
   private emptyAddr() {
@@ -52,7 +140,6 @@ export class CustomersComponent {
       website: '',
       mobile: '',
       email: '',
-      landline: '',
       gstin: '',
       pan: '',
       panFile: undefined,
@@ -62,9 +149,9 @@ export class CustomersComponent {
       billing:  this.emptyAddr(),
       billing2: null as any,
       shippingAddresses: [this.emptyAddr()] as any[],
-      primaryContact:   { firstName: '', lastName: '', mobile: '', email: '', location: '', remarks: '' },
-      secondaryContact: { firstName: '', lastName: '', mobile: '', email: '', location: '', remarks: '' },
-      productPrefs: { material: '', form1: '', form2: '', form3: '' },
+      primaryContact:   { title: '', firstName: '', lastName: '', mobile: '', email: '', remarks: '' },
+      secondaryContact: { title: '', firstName: '', lastName: '', mobile: '', email: '', remarks: '' },
+      productMaterials: [this.emptyMaterial()],
       businessVertical: ''
     };
   }
@@ -102,7 +189,18 @@ export class CustomersComponent {
   }
 
   copyBillingToShipping(i: number) {
-    this.newCustomer.shippingAddresses[i] = { ...this.newCustomer.billing };
+    if (this.showBilling2 && this.newCustomer.billing2) {
+      this.billingChoiceShippingIndex = i;
+      this.showBillingChoiceModal = true;
+    } else {
+      this.newCustomer.shippingAddresses[i] = { ...this.newCustomer.billing };
+    }
+  }
+
+  applyBillingChoice(which: 1 | 2) {
+    const src = which === 2 ? this.newCustomer.billing2 : this.newCustomer.billing;
+    this.newCustomer.shippingAddresses[this.billingChoiceShippingIndex] = { ...src };
+    this.showBillingChoiceModal = false;
   }
 
   /* ─── File handler for address GST document ─── */
@@ -184,6 +282,18 @@ export class CustomersComponent {
 
   constructor(private router: Router, private dbService: DBService) {
     this.loadFromIndexedDB();
+    this.dbService.getAll('inventory').then(inv => this.inventory = inv);
+  }
+
+  /* ─── Migrate old productPrefs → productMaterials array ─── */
+  private migrateProductMaterials(c: any): any[] {
+    if (Array.isArray(c.productMaterials) && c.productMaterials.length) {
+      return c.productMaterials;
+    }
+    if (c.productPrefs?.material) {
+      return [{ ...c.productPrefs }];
+    }
+    return [this.emptyMaterial()];
   }
 
   /* ─── ID Generation ─── */
@@ -236,7 +346,7 @@ export class CustomersComponent {
     this.customers = raw.map((c: any) => {
       const officeAddr = this.normalizeAddr(c.officeAddress);
       const billingAddr = this.normalizeAddr(c.billing);
-      const pc = c.primaryContact || { firstName: '', lastName: '', mobile: '', email: '', location: '', remarks: '' };
+      const pc = c.primaryContact || {};
       return {
         ...c,
         mobile: c.mobile || pc.mobile || officeAddr.mobile || '',
@@ -246,9 +356,9 @@ export class CustomersComponent {
         shippingAddresses: Array.isArray(c.shippingAddresses) && c.shippingAddresses.length
           ? c.shippingAddresses.map((a: any) => this.normalizeAddr(a))
           : [this.normalizeAddr(c.shipping)],
-        primaryContact:   pc,
-        secondaryContact: c.secondaryContact || { firstName: '', lastName: '', mobile: '', email: '', location: '', remarks: '' },
-        productPrefs: c.productPrefs || { material: '', form1: '', form2: '', form3: '' }
+        primaryContact:   { title: '', firstName: '', lastName: '', mobile: '', email: '', remarks: '', ...pc },
+        secondaryContact: { title: '', firstName: '', lastName: '', mobile: '', email: '', remarks: '', ...(c.secondaryContact || {}) },
+        productMaterials: this.migrateProductMaterials(c)
       };
     });
   }
@@ -281,9 +391,9 @@ export class CustomersComponent {
     } else {
       c.shippingAddresses = [this.normalizeAddr(c.shipping)];
     }
-    c.primaryContact   = c.primaryContact   || { firstName: '', lastName: '', mobile: '', email: '', location: '', remarks: '' };
-    c.secondaryContact = c.secondaryContact || { firstName: '', lastName: '', mobile: '', email: '', location: '', remarks: '' };
-    c.productPrefs = c.productPrefs || { material: '', form1: '', form2: '', form3: '' };
+    c.primaryContact   = { title: '', firstName: '', lastName: '', mobile: '', email: '', remarks: '', ...(c.primaryContact   || {}) };
+    c.secondaryContact = { title: '', firstName: '', lastName: '', mobile: '', email: '', remarks: '', ...(c.secondaryContact || {}) };
+    c.productMaterials = this.migrateProductMaterials(c);
     this.newCustomer = c;
     this.showBilling2 = !!c.billing2;
     this.isEditing = true;
@@ -300,7 +410,11 @@ export class CustomersComponent {
   }
 
   async submitForm() {
-    if (!this.newCustomer.name || this.newCustomer.name.trim() === '') return;
+    if (!this.newCustomer.companyName?.trim()) return;
+    // Derive name from primary contact or company name
+    const pc = this.newCustomer.primaryContact;
+    this.newCustomer.name = [pc?.firstName, pc?.lastName].filter(Boolean).join(' ').trim()
+      || this.newCustomer.companyName;
 
     if (this.isEditing && this.editingIndex !== null) {
       const existing = this.customers[this.editingIndex];
@@ -469,5 +583,130 @@ export class CustomersComponent {
 
   goToInquiries(customer: any) {
     this.router.navigate(['/items'], { state: { customer } });
+  }
+
+  /* ─── Preview modal ─── */
+  showPreviewModal = false;
+  previewCustomer: any = null;
+
+  openPreviewModal(customer: any) {
+    this.previewCustomer = customer;
+    this.showPreviewModal = true;
+  }
+
+  closePreviewModal() {
+    this.showPreviewModal = false;
+    this.previewCustomer = null;
+  }
+
+  formatMaterialForms(mat: any): string {
+    return [mat.form1, mat.form2, mat.form3].filter(Boolean).join(' / ');
+  }
+
+  formatContactName(contact: any): string {
+    if (!contact) return '-';
+    return [contact.title, contact.firstName, contact.lastName].filter(Boolean).join(' ').trim() || '-';
+  }
+
+  /* ─── PDF export ─── */
+  downloadCustomerPDF(c: any) {
+    const doc = new jsPDF('p', 'mm', 'a4');
+    const pW = doc.internal.pageSize.getWidth();
+    const L = 14;
+    let y = 15;
+
+    const section = (title: string) => {
+      y += 4;
+      doc.setFillColor(0, 31, 63);
+      doc.rect(L, y, pW - L * 2, 7, 'F');
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(255, 255, 255);
+      doc.text(title, L + 3, y + 5);
+      doc.setTextColor(0, 0, 0);
+      y += 10;
+    };
+
+    const row = (label: string, value: string, x2 = 80) => {
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'bold');
+      doc.text(label, L, y);
+      doc.setFont('helvetica', 'normal');
+      const lines = doc.splitTextToSize(value || '-', pW - x2 - L);
+      doc.text(lines, x2, y);
+      y += lines.length * 5 + 1;
+    };
+
+    const addrText = (addr: any): string => {
+      if (!addr) return '-';
+      return [addr.line1, addr.line2, addr.state, addr.city, addr.pincode, addr.country]
+        .filter(Boolean).join(', ') || '-';
+    };
+
+    // Header
+    doc.setFontSize(16);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Customer Profile', pW / 2, y, { align: 'center' });
+    y += 8;
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`${c.companyName || c.name || ''}  |  ID: ${c.customerId || '-'}`, pW / 2, y, { align: 'center' });
+    y += 6;
+
+    // Basic Info
+    section('Basic Information');
+    row('Company Name:', c.companyName || '-');
+    row('Customer ID:', c.customerId || '-');
+    row('Customer Type:', c.customerType || '-');
+    row('Email:', c.email || '-');
+    row('Website:', c.website || '-');
+    row('GSTIN:', c.gstin || '-');
+    row('PAN:', c.pan || '-');
+    row('MSME:', c.msme || '-');
+
+    // Primary Contact
+    section('Primary Contact');
+    row('Name:', this.formatContactName(c.primaryContact));
+    row('Mobile:', c.primaryContact?.mobile || '-');
+    row('Email:', c.primaryContact?.email || '-');
+    if (c.primaryContact?.remarks) row('Remarks:', c.primaryContact.remarks);
+
+    // Secondary Contact
+    if (c.secondaryContact?.firstName) {
+      section('Secondary Contact');
+      row('Name:', this.formatContactName(c.secondaryContact));
+      row('Mobile:', c.secondaryContact?.mobile || '-');
+      row('Email:', c.secondaryContact?.email || '-');
+    }
+
+    // Office Address
+    section('Office Address');
+    row('Address:', addrText(c.officeAddress));
+
+    // Billing Address
+    section('Billing Address');
+    row('Address:', addrText(c.billing));
+    if (c.billing?.gstin) row('GSTIN:', c.billing.gstin);
+    if (c.billing2) { y += 2; row('Address 2:', addrText(c.billing2)); }
+
+    // Shipping Addresses
+    if (c.shippingAddresses?.length) {
+      section('Shipping Address(es)');
+      c.shippingAddresses.forEach((sa: any, i: number) => {
+        row(`Shipping ${i + 1}:`, addrText(sa));
+      });
+    }
+
+    // Product Preferences
+    if (c.productMaterials?.some((m: any) => m.material)) {
+      section('Product Preferences');
+      c.productMaterials.forEach((m: any, i: number) => {
+        if (!m.material) return;
+        const forms = [m.form1, m.form2, m.form3].filter(Boolean).join(' / ');
+        row(`Material ${i + 1}:`, m.material + (forms ? `  (${forms})` : ''));
+      });
+    }
+
+    doc.save(`Customer_${c.customerId || c.companyName || 'Profile'}.pdf`);
   }
 }

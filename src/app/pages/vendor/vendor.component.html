@@ -450,7 +450,14 @@
         <div class="row-2">
           <div class="form-group">
             <label class="form-label">Mobile No.</label>
-            <input type="text" class="form-input" [(ngModel)]="newVendor.primaryContact.mobile" name="vpc_mobile" />
+            <div style="display:flex;gap:6px">
+              <select [ngModel]="newVendor.primaryContact.mobileCode ?? '+91'"
+                (ngModelChange)="newVendor.primaryContact.mobileCode=$event"
+                name="vpc_mobileCode" class="form-select" style="width:80px;flex-shrink:0">
+                <option *ngFor="let cc of countryCodes" [value]="cc">{{ cc }}</option>
+              </select>
+              <input type="text" class="form-input" [(ngModel)]="newVendor.primaryContact.mobile" name="vpc_mobile" />
+            </div>
           </div>
           <div class="form-group">
             <label class="form-label">Email</label>
@@ -616,24 +623,29 @@
   </div>
   <div class="row-3">
     <div class="form-group">
+      <label class="form-label">State</label>
+      <select class="form-select" [(ngModel)]="addr.state" [name]="prefix+'state'" [disabled]="disabled">
+        <option value="">Select State</option>
+        <option *ngFor="let s of indianStates" [value]="s">{{ s }}</option>
+      </select>
+    </div>
+    <div class="form-group">
       <label class="form-label">City</label>
       <input type="text" class="form-input" [(ngModel)]="addr.city" [name]="prefix+'city'" [disabled]="disabled" />
     </div>
     <div class="form-group">
-      <label class="form-label">State</label>
-      <input type="text" class="form-input" [(ngModel)]="addr.state" [name]="prefix+'state'" [disabled]="disabled" />
-    </div>
-    <div class="form-group">
       <label class="form-label">Pincode</label>
       <input type="text" class="form-input" [(ngModel)]="addr.pincode" [name]="prefix+'pincode'"
-        [disabled]="disabled" />
+        [disabled]="disabled" maxlength="6" (change)="lookupPincode(addr, addr.pincode)" />
     </div>
   </div>
   <div class="row-2">
     <div class="form-group">
       <label class="form-label">Country</label>
-      <input type="text" class="form-input" [(ngModel)]="addr.country" [name]="prefix+'country'"
-        [disabled]="disabled" />
+      <select class="form-select" [(ngModel)]="addr.country" [name]="prefix+'country'" [disabled]="disabled">
+        <option value="">Select Country</option>
+        <option *ngFor="let c of countries" [value]="c">{{ c }}</option>
+      </select>
     </div>
     <div class="form-group">
       <label class="form-label">GST No.</label>
@@ -674,7 +686,13 @@
     </div>
     <div class="form-group">
       <label class="form-label">Mobile No.</label>
-      <input type="text" class="form-input" [(ngModel)]="addr.mobile" [name]="prefix+'mobile'" [disabled]="disabled" />
+      <div style="display:flex;gap:6px">
+        <select [ngModel]="addr.mobileCode ?? '+91'" (ngModelChange)="addr.mobileCode=$event"
+          [name]="prefix+'mobileCode'" [disabled]="disabled" class="form-select" style="width:80px;flex-shrink:0">
+          <option *ngFor="let cc of countryCodes" [value]="cc">{{ cc }}</option>
+        </select>
+        <input type="text" class="form-input" [(ngModel)]="addr.mobile" [name]="prefix+'mobile'" [disabled]="disabled" />
+      </div>
     </div>
   </div>
 </ng-template>

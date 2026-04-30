@@ -56,6 +56,7 @@ interface InquiryRecord {
   companyName?: string;
   customerName: string;
   customerPhone?: string;
+  customerPhoneCode?: string;
   email?: string;
   mobile?: string;
 
@@ -75,6 +76,7 @@ interface InquiryRecord {
   followUps: FollowUpEntry[];
 
   inquiryType?: string;
+  inquiryTypeCustom?: string;
   decision?: 'Under Negotiation' | 'Order Received' | 'Order Lost' | 'Rejected';
   rejectionReason?: string;
 
@@ -122,6 +124,12 @@ export class InquiryMasterComponent {
   lostRemarksText: string = '';
   customers: any[] = [];
   inventory: any[] = [];
+  contactOptions: string[] = [];
+
+  countryCodes: string[] = [
+    '+91', '+1', '+44', '+971', '+966', '+65', '+61', '+49', '+86', '+81',
+    '+60', '+62', '+880', '+92', '+94', '+977', '+66', '+84', '+55', '+27'
+  ];
 
   constructor(
     private dbService: DBService,
@@ -182,6 +190,22 @@ export class InquiryMasterComponent {
   /* -----------------------------
      COMPANY SELECTION
   ----------------------------- */
+  private buildFullName(contact: any): string {
+    return contact ? [contact.firstName, contact.lastName].filter(Boolean).join(' ') : '';
+  }
+
+  private populateContactOptions(companyName?: string): void {
+    if (!companyName) { this.contactOptions = []; return; }
+    const customer = this.customers.find(c => c.companyName === companyName);
+    if (!customer) { this.contactOptions = []; return; }
+    const names: string[] = [];
+    const n1 = this.buildFullName(customer.primaryContact);
+    const n2 = this.buildFullName(customer.secondaryContact);
+    if (n1) names.push(n1);
+    if (n2) names.push(n2);
+    this.contactOptions = names;
+  }
+
   onCompanySelect() {
     if (!this.currentInquiry) return;
 
@@ -189,14 +213,12 @@ export class InquiryMasterComponent {
       c => c.companyName === this.currentInquiry!.companyName
     );
 
-    if (!customer) return;
+    if (!customer) { this.contactOptions = []; return; }
 
-    // Customer name from primaryContact or direct name field
+    // Build contact name dropdown options
+    this.populateContactOptions(customer.companyName);
     const pc = customer.primaryContact;
-    const fullName = pc
-      ? [pc.firstName, pc.lastName].filter(Boolean).join(' ')
-      : '';
-    this.currentInquiry.customerName = fullName || customer.name || '';
+    this.currentInquiry.customerName = this.buildFullName(pc) || customer.name || '';
 
     // Phone / email — check primaryContact first, then top-level
     this.currentInquiry.customerPhone =
@@ -411,13 +433,16 @@ export class InquiryMasterComponent {
     const nextId = await this.getNextInquiryId();
     this.previewInquiryId = this.getDisplayInquiryId(nextId);
     this.showAddEditModal = true;
+    this.contactOptions = [];
     this.currentInquiry = {
       date: new Date().toISOString().slice(0, 10),
       companyName: '',
       customerName: '',
       customerPhone: '',
+      customerPhoneCode: '+91',
       email: '',
       officeAddress: '',
+      inquiryTypeCustom: '',
       billing: {},
       shipping: {},
       items: [this.emptyItem()],
@@ -435,6 +460,7 @@ export class InquiryMasterComponent {
       this.currentInquiry.date = new Date().toISOString().slice(0, 10);
     }
 
+    this.populateContactOptions(inq.companyName);
     this.showAddEditModal = true;
   }
 

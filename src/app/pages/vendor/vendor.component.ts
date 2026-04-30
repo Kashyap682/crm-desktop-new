@@ -74,8 +74,8 @@ interface Vendor {
 
   // Primary contact
   primaryContact: {
-    firstName: string; lastName: string;
-    mobile: string; email: string;
+    title?: string; firstName: string; lastName: string;
+    mobile: string; mobileCode?: string; email: string;
     location: string; remarks: string;
   };
 
@@ -106,6 +106,46 @@ export class VendorComponent implements OnInit {
   showBilling2 = false;
 
   tempProduct = '';
+
+  indianStates: string[] = [
+    'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh',
+    'Goa', 'Gujarat', 'Haryana', 'Himachal Pradesh', 'Jharkhand', 'Karnataka',
+    'Kerala', 'Madhya Pradesh', 'Maharashtra', 'Manipur', 'Meghalaya', 'Mizoram',
+    'Nagaland', 'Odisha', 'Punjab', 'Rajasthan', 'Sikkim', 'Tamil Nadu',
+    'Telangana', 'Tripura', 'Uttar Pradesh', 'Uttarakhand', 'West Bengal',
+    'Andaman and Nicobar Islands', 'Chandigarh',
+    'Dadra and Nagar Haveli and Daman and Diu', 'Delhi',
+    'Jammu and Kashmir', 'Ladakh', 'Lakshadweep', 'Puducherry'
+  ];
+
+  countryCodes: string[] = [
+    '+91', '+1', '+44', '+971', '+966', '+65', '+61', '+49', '+86', '+81',
+    '+60', '+62', '+880', '+92', '+94', '+977', '+66', '+84', '+55', '+27'
+  ];
+
+  countries: string[] = [
+    'India',
+    'Afghanistan', 'Australia', 'Bahrain', 'Bangladesh', 'Belgium', 'Bhutan',
+    'Brazil', 'Canada', 'China', 'France', 'Germany', 'Hong Kong', 'Indonesia',
+    'Iran', 'Iraq', 'Italy', 'Japan', 'Kenya', 'Kuwait', 'Malaysia', 'Maldives',
+    'Myanmar', 'Nepal', 'Netherlands', 'New Zealand', 'Nigeria', 'Oman',
+    'Pakistan', 'Philippines', 'Qatar', 'Russia', 'Saudi Arabia', 'Singapore',
+    'South Africa', 'South Korea', 'Sri Lanka', 'Switzerland', 'Thailand',
+    'United Arab Emirates', 'United Kingdom', 'United States of America'
+  ];
+
+  async lookupPincode(addr: any, pincode: string): Promise<void> {
+    if (!pincode || pincode.length !== 6) return;
+    try {
+      const res = await fetch(`https://api.postalpincode.in/pincode/${pincode}`);
+      const data = await res.json();
+      if (data[0]?.Status === 'Success' && data[0]?.PostOffice?.length) {
+        const po = data[0].PostOffice[0];
+        if (po.State) addr.state = po.State;
+        if (po.District) addr.city = po.District;
+      }
+    } catch (_) { /* offline or API error */ }
+  }
 
   constructor(private dbService: DBService) { }
 
