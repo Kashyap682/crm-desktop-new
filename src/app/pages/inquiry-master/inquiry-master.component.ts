@@ -130,6 +130,13 @@ export class InquiryMasterComponent {
     '+91', '+1', '+44', '+971', '+966', '+65', '+61', '+49', '+86', '+81',
     '+60', '+62', '+880', '+92', '+94', '+977', '+66', '+84', '+55', '+27'
   ];
+  indianStates: string[] = [
+    'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh',
+    'Goa', 'Gujarat', 'Haryana', 'Himachal Pradesh', 'Jharkhand', 'Karnataka',
+    'Kerala', 'Madhya Pradesh', 'Maharashtra', 'Manipur', 'Meghalaya', 'Mizoram',
+    'Nagaland', 'Odisha', 'Punjab', 'Rajasthan', 'Sikkim', 'Tamil Nadu',
+    'Telangana', 'Tripura', 'Uttar Pradesh', 'Uttarakhand', 'West Bengal'
+  ];
 
   constructor(
     private dbService: DBService,
@@ -219,12 +226,10 @@ export class InquiryMasterComponent {
     this.populateContactOptions(customer.companyName);
     const pc = customer.primaryContact;
     this.currentInquiry.customerName = this.buildFullName(pc) || customer.name || '';
+    this.applySelectedContactDetails();
 
     // Phone / email — check primaryContact first, then top-level
-    this.currentInquiry.customerPhone =
-      pc?.mobile || customer.mobile || '';
-    this.currentInquiry.email =
-      pc?.email || customer.email || '';
+    this.currentInquiry.customerPhoneCode = pc?.mobileCode || customer.customerPhoneCode || '+91';
 
     // Build office address string — try officeAddress, then billing as fallback
     const buildAddr = (obj: any): string => {
@@ -383,6 +388,35 @@ export class InquiryMasterComponent {
     const num = match ? parseInt(match[1], 10) : Number(raw);
     if (!Number.isFinite(num) || num <= 0) return raw;
     return `INQ-${String(num).padStart(3, '0')}`;
+  }
+
+  onCustomerContactChange() {
+    this.applySelectedContactDetails();
+  }
+
+  private applySelectedContactDetails() {
+    if (!this.currentInquiry?.companyName) return;
+    const customer = this.customers.find(c => c.companyName === this.currentInquiry!.companyName);
+    if (!customer) return;
+    const fullName = this.currentInquiry.customerName;
+    const contactCandidates = [customer.primaryContact, customer.secondaryContact].filter(Boolean);
+    const selected = contactCandidates.find((c: any) => this.buildFullName(c) === fullName) || customer.primaryContact;
+    this.currentInquiry.customerPhone = selected?.mobile || customer.mobile || '';
+    this.currentInquiry.customerPhoneCode = selected?.mobileCode || '+91';
+    this.currentInquiry.email = selected?.email || customer.email || '';
+  }
+
+  async lookupPincode(addr: any, pincode?: string): Promise<void> {
+    if (!addr || !pincode || pincode.length !== 6) return;
+    try {
+      const res = await fetch(`https://api.postalpincode.in/pincode/${pincode}`);
+      const data = await res.json();
+      if (data[0]?.Status === 'Success' && data[0]?.PostOffice?.length) {
+        const po = data[0].PostOffice[0];
+        if (po.State) addr.state = po.State;
+        if (po.District) addr.city = po.District;
+      }
+    } catch (_) { /* ignore lookup errors */ }
   }
 
   private async getNextInquiryId(): Promise<number> {
