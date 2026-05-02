@@ -47,9 +47,10 @@ export class OffersComponent {
   selectedSubjectItem: any = null;
 
   // Status filter
-  selectedStatus: string = '';
+  selectedStatus: string = 'pending';
   statusOptions = [
     { value: '', label: 'All Offers' },
+    { value: 'pending', label: 'Pending Inquiries' },
     { value: 'under_negotiation', label: 'Under Negotiation' },
     { value: 'order_received', label: 'Order Received' },
     { value: 'order_lost', label: 'Order Lost' },
@@ -110,6 +111,16 @@ export class OffersComponent {
 
   getInquiriesForTab(tabValue: string): any[] {
     if (!tabValue) return [];
+    const offeredInquiryIds = new Set(
+      this.offers
+        .map((o: any) => this.toInquiryId(o.inquiryNo ?? o.inquiryId ?? o.inquiryRef))
+        .filter((id: any) => id != null)
+    );
+    if (tabValue === 'pending') {
+      return this.inquiries.filter(
+        (inq: any) => !inq.decision && !offeredInquiryIds.has(this.toInquiryId(inq.id))
+      );
+    }
     const decisionMap: Record<string, string> = {
       'under_negotiation': 'Under Negotiation',
       'order_received':    'Order Received',
@@ -118,11 +129,6 @@ export class OffersComponent {
     };
     const decision = decisionMap[tabValue];
     if (!decision) return [];
-    const offeredInquiryIds = new Set(
-      this.offers
-        .map((o: any) => this.toInquiryId(o.inquiryNo ?? o.inquiryId ?? o.inquiryRef))
-        .filter((id: any) => id != null)
-    );
     return this.inquiries.filter(
       (inq: any) => inq.decision === decision && !offeredInquiryIds.has(this.toInquiryId(inq.id))
     );
@@ -240,6 +246,7 @@ export class OffersComponent {
 
   getStatusCount(status: string): number {
     if (!status) return this.offers.length;
+    if (status === 'pending') return this.getInquiriesForTab('pending').length;
     return this.offers.filter((o: any) => o.offerStatus === status).length;
   }
 
