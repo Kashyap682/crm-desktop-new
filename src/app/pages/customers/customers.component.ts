@@ -119,13 +119,28 @@ export class CustomersComponent {
     }, 200);
   }
 
+  /* ─── Empty address contact ─── */
+  private emptyAddrContact() {
+    return { contactPerson: '', department: '', email: '', mobile: '', mobileCode: '+91' };
+  }
+
+  addAddrContact(addr: any) {
+    if (!addr.contacts) addr.contacts = [];
+    addr.contacts.push(this.emptyAddrContact());
+  }
+
+  removeAddrContact(addr: any, i: number) {
+    if (addr.contacts?.length > 1) addr.contacts.splice(i, 1);
+  }
+
   /* ─── Empty address object ─── */
   private emptyAddr() {
     return {
       street: '', area: '', line1: '', line2: '',
       pincode: '', city: '', state: '', country: '',
       gstin: '', gstFile: undefined as any,
-      contactPerson: '', email: '', mobile: '', department: ''
+      contactPerson: '', email: '', mobile: '', department: '',
+      contacts: [this.emptyAddrContact()]
     };
   }
 
@@ -189,18 +204,12 @@ export class CustomersComponent {
   }
 
   copyBillingToShipping(i: number) {
-    if (this.showBilling2 && this.newCustomer.billing2) {
-      this.billingChoiceShippingIndex = i;
-      this.showBillingChoiceModal = true;
-    } else {
-      this.newCustomer.shippingAddresses[i] = { ...this.newCustomer.billing };
-    }
+    this.newCustomer.shippingAddresses[i] = { ...this.newCustomer.billing };
   }
 
-  applyBillingChoice(which: 1 | 2) {
+  copyBillingToShippingDirect(shippingIndex: number, which: 1 | 2) {
     const src = which === 2 ? this.newCustomer.billing2 : this.newCustomer.billing;
-    this.newCustomer.shippingAddresses[this.billingChoiceShippingIndex] = { ...src };
-    this.showBillingChoiceModal = false;
+    this.newCustomer.shippingAddresses[shippingIndex] = { ...src };
   }
 
   /* ─── File handler for address GST document ─── */
@@ -322,6 +331,11 @@ export class CustomersComponent {
   /* ─── Normalize address from old or new schema ─── */
   private normalizeAddr(addr: any) {
     if (!addr) return this.emptyAddr();
+    const contacts = Array.isArray(addr.contacts) && addr.contacts.length
+      ? addr.contacts
+      : [{ contactPerson: addr.contactPerson || '', department: addr.department || '',
+           email: addr.email || '', mobile: addr.mobile || '',
+           mobileCode: addr.mobileCode || '+91' }];
     return {
       street: addr.street || '',
       area: addr.area || '',
@@ -336,7 +350,8 @@ export class CustomersComponent {
       contactPerson: addr.contactPerson || '',
       email: addr.email || '',
       mobile: addr.mobile || '',
-      department: addr.department || ''
+      department: addr.department || '',
+      contacts
     };
   }
 
@@ -457,48 +472,67 @@ export class CustomersComponent {
 
       const formatted = data.map((row: any) => {
         lastNumber++;
-        const addr = (prefix: string) => ({
-          line1: row[`${prefix} Line1`] || '',
-          line2: row[`${prefix} Line2`] || '',
-          city: row[`${prefix} City`] || '',
-          state: row[`${prefix} State`] || '',
-          pincode: row[`${prefix} Pincode`] || '',
-          country: row[`${prefix} Country`] || 'India',
-          gstin: row[`${prefix} GSTIN`] || '',
-          contactPerson: row[`${prefix} Contact`] || '',
-          email: row[`${prefix} Email`] || '',
-          mobile: row[`${prefix} Mobile`] || '',
-          department: row[`${prefix} Department`] || ''
-        });
+        const addr = (prefix: string) => {
+          const cp = {
+            contactPerson: row[`${prefix} Contact`] || '',
+            department: row[`${prefix} Department`] || '',
+            email: row[`${prefix} Email`] || '',
+            mobile: row[`${prefix} Mobile`] || '',
+            mobileCode: '+91'
+          };
+          return {
+            line1: row[`${prefix} Line1`] || '',
+            line2: row[`${prefix} Line2`] || '',
+            city: row[`${prefix} City`] || '',
+            state: row[`${prefix} State`] || '',
+            pincode: row[`${prefix} Pincode`] || '',
+            country: row[`${prefix} Country`] || 'India',
+            gstin: row[`${prefix} GSTIN`] || '',
+            contactPerson: cp.contactPerson,
+            email: cp.email,
+            mobile: cp.mobile,
+            department: cp.department,
+            contacts: [cp]
+          };
+        };
         const contact = (prefix: string) => ({
+          title: row[`${prefix} Title`] || '',
           firstName: row[`${prefix} First Name`] || '',
           lastName: row[`${prefix} Last Name`] || '',
           mobile: row[`${prefix} Mobile`] || '',
+          mobileCode: '+91',
           email: row[`${prefix} Email`] || '',
-          location: row[`${prefix} Location`] || '',
           remarks: row[`${prefix} Remarks`] || ''
         });
+        const productMaterials = [];
+        for (let i = 1; i <= 3; i++) {
+          const material = row[`Material ${i}`] || '';
+          if (material) productMaterials.push({
+            material,
+            form1: row[`Material ${i} Form 1`] || '',
+            form2: row[`Material ${i} Form 2`] || '',
+            form3: row[`Material ${i} Form 3`] || ''
+          });
+        }
+        if (!productMaterials.length) productMaterials.push({ material: '', form1: '', form2: '', form3: '' });
         return {
           id: Date.now() + Math.random(),
           customerId: `CUS-${lastNumber.toString().padStart(3, '0')}`,
           customerType: row['Customer Type'] || '',
-          name: row['Name'] || '',
           companyName: row['Company Name'] || '',
           email: row['Email'] || '',
           website: row['Website'] || '',
+          gstin: row['GSTIN'] || '',
+          businessVertical: row['Business Vertical'] || '',
           pan: row['PAN'] || '',
           msme: row['MSME'] || '',
           officeAddress: addr('Office'),
           billing: addr('Billing'),
-          shipping: { line1: '', line2: '', city: '', state: '', pincode: '', country: 'India' },
+          billing2: null,
+          shippingAddresses: [addr('Shipping')],
           primaryContact: contact('Primary Contact'),
           secondaryContact: contact('Secondary Contact'),
-          productPrefs: {
-            material: row['Material Preference'] || '',
-            form1: row['Form 1'] || '',
-            form2: row['Form 2'] || '',
-            form3: row['Form 3'] || ''
-          }
+          productMaterials
         };
       });
 
@@ -514,52 +548,59 @@ export class CustomersComponent {
 
   /* ─── Excel Export ─── */
   private customerRow(c: any) {
+    const addrCols = (a: any, prefix: string) => {
+      const cp = Array.isArray(a?.contacts) && a.contacts.length ? a.contacts[0] : {};
+      return {
+        [`${prefix} Line1`]: a?.line1 || a?.street || '',
+        [`${prefix} Line2`]: a?.line2 || a?.area || '',
+        [`${prefix} State`]: a?.state || '',
+        [`${prefix} City`]: a?.city || '',
+        [`${prefix} Pincode`]: a?.pincode || '',
+        [`${prefix} Country`]: a?.country || '',
+        [`${prefix} GSTIN`]: a?.gstin || '',
+        [`${prefix} Contact`]: cp?.contactPerson || a?.contactPerson || '',
+        [`${prefix} Department`]: cp?.department || a?.department || '',
+        [`${prefix} Email`]: cp?.email || a?.email || '',
+        [`${prefix} Mobile`]: cp?.mobile || a?.mobile || '',
+      };
+    };
+    const mats = c.productMaterials?.length ? c.productMaterials
+      : (c.productPrefs?.material ? [c.productPrefs] : [{}]);
+    const matCols: any = {};
+    for (let i = 0; i < 3; i++) {
+      const m = mats[i] || {};
+      matCols[`Material ${i + 1}`] = m.material || '';
+      matCols[`Material ${i + 1} Form 1`] = m.form1 || '';
+      matCols[`Material ${i + 1} Form 2`] = m.form2 || '';
+      matCols[`Material ${i + 1} Form 3`] = m.form3 || '';
+    }
     return {
+      'Customer ID': c.customerId || '',
       'Customer Type': c.customerType || '',
-      'Name': c.name || '',
       'Company Name': c.companyName || '',
+      'GSTIN': c.gstin || '',
       'Email': c.email || '',
       'Website': c.website || '',
+      'Business Vertical': c.businessVertical || '',
       'PAN': c.pan || '',
       'MSME': c.msme || '',
-      'Office Line1': c.officeAddress?.line1 || c.officeAddress?.street || '',
-      'Office Line2': c.officeAddress?.line2 || c.officeAddress?.area || '',
-      'Office City': c.officeAddress?.city || '',
-      'Office State': c.officeAddress?.state || '',
-      'Office Pincode': c.officeAddress?.pincode || '',
-      'Office Country': c.officeAddress?.country || '',
-      'Office GSTIN': c.officeAddress?.gstin || '',
-      'Office Contact': c.officeAddress?.contactPerson || '',
-      'Office Email': c.officeAddress?.email || '',
-      'Office Mobile': c.officeAddress?.mobile || '',
-      'Office Department': c.officeAddress?.department || '',
-      'Billing Line1': c.billing?.line1 || c.billing?.street || '',
-      'Billing Line2': c.billing?.line2 || c.billing?.area || '',
-      'Billing City': c.billing?.city || '',
-      'Billing State': c.billing?.state || '',
-      'Billing Pincode': c.billing?.pincode || '',
-      'Billing Country': c.billing?.country || '',
-      'Billing GSTIN': c.billing?.gstin || '',
-      'Billing Contact': c.billing?.contactPerson || '',
-      'Billing Email': c.billing?.email || '',
-      'Billing Mobile': c.billing?.mobile || '',
-      'Billing Department': c.billing?.department || '',
+      ...addrCols(c.officeAddress, 'Office'),
+      'Primary Contact Title': c.primaryContact?.title || '',
       'Primary Contact First Name': c.primaryContact?.firstName || '',
       'Primary Contact Last Name': c.primaryContact?.lastName || '',
       'Primary Contact Mobile': c.primaryContact?.mobile || '',
       'Primary Contact Email': c.primaryContact?.email || '',
-      'Primary Contact Location': c.primaryContact?.location || '',
       'Primary Contact Remarks': c.primaryContact?.remarks || '',
+      'Secondary Contact Title': c.secondaryContact?.title || '',
       'Secondary Contact First Name': c.secondaryContact?.firstName || '',
       'Secondary Contact Last Name': c.secondaryContact?.lastName || '',
       'Secondary Contact Mobile': c.secondaryContact?.mobile || '',
       'Secondary Contact Email': c.secondaryContact?.email || '',
-      'Secondary Contact Location': c.secondaryContact?.location || '',
       'Secondary Contact Remarks': c.secondaryContact?.remarks || '',
-      'Material Preference': c.productPrefs?.material || '',
-      'Form 1': c.productPrefs?.form1 || '',
-      'Form 2': c.productPrefs?.form2 || '',
-      'Form 3': c.productPrefs?.form3 || ''
+      ...addrCols(c.billing, 'Billing'),
+      ...addrCols(c.billing2 ?? null, 'Billing 2'),
+      ...addrCols(c.shippingAddresses?.[0], 'Shipping'),
+      ...matCols
     };
   }
 
@@ -667,6 +708,19 @@ export class CustomersComponent {
         .filter(Boolean).join(', ') || '-';
     };
 
+    const addrContacts = (addr: any) => {
+      const contacts: any[] = Array.isArray(addr?.contacts) && addr.contacts.length
+        ? addr.contacts
+        : (addr?.contactPerson ? [{ contactPerson: addr.contactPerson, department: addr.department, mobile: addr.mobile, mobileCode: addr.mobileCode, email: addr.email }] : []);
+      contacts.forEach((cp: any, ci: number) => {
+        const label = contacts.length > 1 ? `Contact ${ci + 1}:` : 'Contact:';
+        const name = [cp.title, cp.contactPerson].filter(Boolean).join(' ') || '';
+        if (name) row(label, name + (cp.department ? `  (${cp.department})` : ''));
+        if (cp.mobile) row('  Mobile:', (cp.mobileCode || '+91') + ' ' + cp.mobile);
+        if (cp.email) row('  Email:', cp.email);
+      });
+    };
+
     // Header
     doc.setFontSize(16);
     doc.setFont('helvetica', 'bold');
@@ -682,16 +736,14 @@ export class CustomersComponent {
     row('Company Name:', c.companyName || '-');
     row('Customer ID:', c.customerId || '-');
     row('Customer Type:', c.customerType || '-');
+    if (c.businessVertical) row('Business Vertical:', c.businessVertical);
     row('Email:', c.email || '-');
     row('Website:', c.website || '-');
-    row('GSTIN:', c.gstin || '-');
-    row('PAN:', c.pan || '-');
-    row('MSME:', c.msme || '-');
 
     // Primary Contact
     section('Primary Contact');
     row('Name:', this.formatContactName(c.primaryContact));
-    row('Mobile:', c.primaryContact?.mobile || '-');
+    row('Mobile:', ((c.primaryContact?.mobileCode || '+91') + ' ' + (c.primaryContact?.mobile || '')).trim() || '-');
     row('Email:', c.primaryContact?.email || '-');
     if (c.primaryContact?.remarks) row('Remarks:', c.primaryContact.remarks);
 
@@ -699,25 +751,42 @@ export class CustomersComponent {
     if (c.secondaryContact?.firstName) {
       section('Secondary Contact');
       row('Name:', this.formatContactName(c.secondaryContact));
-      row('Mobile:', c.secondaryContact?.mobile || '-');
+      row('Mobile:', ((c.secondaryContact?.mobileCode || '+91') + ' ' + (c.secondaryContact?.mobile || '')).trim() || '-');
       row('Email:', c.secondaryContact?.email || '-');
+      if (c.secondaryContact?.remarks) row('Remarks:', c.secondaryContact.remarks);
     }
 
     // Office Address
     section('Office Address');
     row('Address:', addrText(c.officeAddress));
+    addrContacts(c.officeAddress);
+
+    // Tax Documents
+    section('Tax Documents');
+    row('GSTIN:', c.gstin || '-');
+    row('PAN:', c.pan || '-');
+    row('MSME:', c.msme || '-');
 
     // Billing Address
-    section('Billing Address');
+    section('Billing Address 1');
     row('Address:', addrText(c.billing));
     if (c.billing?.gstin) row('GSTIN:', c.billing.gstin);
-    if (c.billing2) { y += 2; row('Address 2:', addrText(c.billing2)); }
+    addrContacts(c.billing);
+
+    if (c.billing2) {
+      section('Billing Address 2');
+      row('Address:', addrText(c.billing2));
+      if (c.billing2?.gstin) row('GSTIN:', c.billing2.gstin);
+      addrContacts(c.billing2);
+    }
 
     // Shipping Addresses
     if (c.shippingAddresses?.length) {
-      section('Shipping Address(es)');
       c.shippingAddresses.forEach((sa: any, i: number) => {
-        row(`Shipping ${i + 1}:`, addrText(sa));
+        section(`Shipping Address ${i + 1}`);
+        row('Address:', addrText(sa));
+        if (sa.gstin) row('GSTIN:', sa.gstin);
+        addrContacts(sa);
       });
     }
 

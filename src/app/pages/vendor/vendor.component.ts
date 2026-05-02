@@ -23,6 +23,7 @@ interface VendorAddress {
   email: string;
   mobile: string;
   department: string;
+  contacts?: any[];
   // keep old fields for backward compat
   street?: string;
   area?: string;
@@ -152,11 +153,25 @@ export class VendorComponent implements OnInit {
   ngOnInit() { this.loadVendors(); }
 
   /* ─── Empty address ─── */
+  private emptyAddrContact() {
+    return { contactPerson: '', department: '', email: '', mobile: '', mobileCode: '+91' };
+  }
+
+  addAddrContact(addr: any) {
+    if (!addr.contacts) addr.contacts = [];
+    addr.contacts.push(this.emptyAddrContact());
+  }
+
+  removeAddrContact(addr: any, i: number) {
+    if (addr.contacts?.length > 1) addr.contacts.splice(i, 1);
+  }
+
   private emptyAddr(): VendorAddress {
     return {
       line1: '', line2: '', city: '', state: '', pincode: '',
       country: '', gstin: '', gstFile: undefined, contactPerson: '', email: '',
-      mobile: '', department: '', street: '', area: ''
+      mobile: '', department: '', street: '', area: '',
+      contacts: [this.emptyAddrContact()]
     };
   }
 
@@ -201,6 +216,11 @@ export class VendorComponent implements OnInit {
 
   private normalizeAddr(addr: any): VendorAddress {
     if (!addr) return this.emptyAddr();
+    const contacts = Array.isArray(addr.contacts) && addr.contacts.length
+      ? addr.contacts
+      : [{ contactPerson: addr.contactPerson || '', department: addr.department || '',
+           email: addr.email || '', mobile: addr.mobile || '',
+           mobileCode: addr.mobileCode || '+91' }];
     return {
       line1: addr.line1 || addr.street || '',
       line2: addr.line2 || addr.area || '',
@@ -210,7 +230,8 @@ export class VendorComponent implements OnInit {
       contactPerson: addr.contactPerson || '',
       email: addr.email || '', mobile: addr.mobile || '',
       department: addr.department || '',
-      street: addr.street || '', area: addr.area || ''
+      street: addr.street || '', area: addr.area || '',
+      contacts
     };
   }
 

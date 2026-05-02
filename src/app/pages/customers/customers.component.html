@@ -252,6 +252,7 @@
           <div><span style="font-size:11px;color:#64748b;display:block;">Customer ID</span><strong>{{ previewCustomer.customerId || '-' }}</strong></div>
           <div><span style="font-size:11px;color:#64748b;display:block;">Customer Type</span><strong>{{ previewCustomer.customerType || '-' }}</strong></div>
           <div><span style="font-size:11px;color:#64748b;display:block;">Company Name</span><strong>{{ previewCustomer.companyName || '-' }}</strong></div>
+          <div><span style="font-size:11px;color:#64748b;display:block;">Business Vertical</span><strong>{{ previewCustomer.businessVertical || '-' }}</strong></div>
           <div><span style="font-size:11px;color:#64748b;display:block;">Email</span><strong>{{ previewCustomer.email || '-' }}</strong></div>
           <div><span style="font-size:11px;color:#64748b;display:block;">Website</span><strong>{{ previewCustomer.website || '-' }}</strong></div>
           <div><span style="font-size:11px;color:#64748b;display:block;">GSTIN</span><strong>{{ previewCustomer.gstin || '-' }}</strong></div>
@@ -264,10 +265,8 @@
       <div class="section-card">
         <h3 class="section-header" style="font-size:14px;">Primary Contact</h3>
         <div class="info-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-          <div><span style="font-size:11px;color:#64748b;display:block;">Name</span>
-            <strong>{{ formatContactName(previewCustomer.primaryContact) }}</strong>
-          </div>
-          <div><span style="font-size:11px;color:#64748b;display:block;">Mobile</span><strong>{{ previewCustomer.primaryContact?.mobile || '-' }}</strong></div>
+          <div><span style="font-size:11px;color:#64748b;display:block;">Name</span><strong>{{ formatContactName(previewCustomer.primaryContact) }}</strong></div>
+          <div><span style="font-size:11px;color:#64748b;display:block;">Mobile</span><strong>{{ (previewCustomer.primaryContact?.mobileCode || '+91') + ' ' + (previewCustomer.primaryContact?.mobile || '-') }}</strong></div>
           <div><span style="font-size:11px;color:#64748b;display:block;">Email</span><strong>{{ previewCustomer.primaryContact?.email || '-' }}</strong></div>
           <div><span style="font-size:11px;color:#64748b;display:block;">Remarks</span><strong>{{ previewCustomer.primaryContact?.remarks || '-' }}</strong></div>
         </div>
@@ -277,51 +276,28 @@
       <div class="section-card" *ngIf="previewCustomer.secondaryContact?.firstName">
         <h3 class="section-header" style="font-size:14px;">Secondary Contact</h3>
         <div class="info-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-          <div><span style="font-size:11px;color:#64748b;display:block;">Name</span>
-            <strong>{{ formatContactName(previewCustomer.secondaryContact) }}</strong>
-          </div>
-          <div><span style="font-size:11px;color:#64748b;display:block;">Mobile</span><strong>{{ previewCustomer.secondaryContact?.mobile || '-' }}</strong></div>
+          <div><span style="font-size:11px;color:#64748b;display:block;">Name</span><strong>{{ formatContactName(previewCustomer.secondaryContact) }}</strong></div>
+          <div><span style="font-size:11px;color:#64748b;display:block;">Mobile</span><strong>{{ (previewCustomer.secondaryContact?.mobileCode || '+91') + ' ' + (previewCustomer.secondaryContact?.mobile || '-') }}</strong></div>
           <div><span style="font-size:11px;color:#64748b;display:block;">Email</span><strong>{{ previewCustomer.secondaryContact?.email || '-' }}</strong></div>
+          <div><span style="font-size:11px;color:#64748b;display:block;">Remarks</span><strong>{{ previewCustomer.secondaryContact?.remarks || '-' }}</strong></div>
         </div>
       </div>
 
       <!-- Office Address -->
-      <div class="section-card">
-        <h3 class="section-header" style="font-size:14px;">Office Address</h3>
-        <p style="margin:0;font-size:13px;line-height:1.7;">
-          {{ previewCustomer.officeAddress?.line1 }}<span *ngIf="previewCustomer.officeAddress?.line2">, {{ previewCustomer.officeAddress?.line2 }}</span><br/>
-          {{ previewCustomer.officeAddress?.state }}<span *ngIf="previewCustomer.officeAddress?.city">, {{ previewCustomer.officeAddress?.city }}</span>
-          <span *ngIf="previewCustomer.officeAddress?.pincode"> - {{ previewCustomer.officeAddress?.pincode }}</span><br/>
-          {{ previewCustomer.officeAddress?.country }}
-        </p>
-      </div>
+      <ng-container *ngTemplateOutlet="addrPreview; context: { addr: previewCustomer.officeAddress, title: 'Office Address' }"></ng-container>
 
-      <!-- Billing Address -->
-      <div class="section-card">
-        <h3 class="section-header" style="font-size:14px;">Billing Address</h3>
-        <p style="margin:0;font-size:13px;line-height:1.7;">
-          {{ previewCustomer.billing?.line1 }}<span *ngIf="previewCustomer.billing?.line2">, {{ previewCustomer.billing?.line2 }}</span><br/>
-          {{ previewCustomer.billing?.state }}<span *ngIf="previewCustomer.billing?.city">, {{ previewCustomer.billing?.city }}</span>
-          <span *ngIf="previewCustomer.billing?.pincode"> - {{ previewCustomer.billing?.pincode }}</span><br/>
-          {{ previewCustomer.billing?.country }}
-          <span *ngIf="previewCustomer.billing?.gstin"><br/>GSTIN: {{ previewCustomer.billing?.gstin }}</span>
-        </p>
-      </div>
+      <!-- Billing Addresses -->
+      <ng-container *ngTemplateOutlet="addrPreview; context: { addr: previewCustomer.billing, title: 'Billing Address' }"></ng-container>
+      <ng-container *ngIf="previewCustomer.billing2">
+        <ng-container *ngTemplateOutlet="addrPreview; context: { addr: previewCustomer.billing2, title: 'Billing Address 2' }"></ng-container>
+      </ng-container>
 
       <!-- Shipping Addresses -->
-      <div class="section-card" *ngIf="previewCustomer.shippingAddresses?.length">
-        <h3 class="section-header" style="font-size:14px;">Shipping Address(es)</h3>
-        <div *ngFor="let sa of previewCustomer.shippingAddresses; let si = index"
-          [style.margin-top]="si > 0 ? '12px' : '0'">
-          <p style="margin:0 0 2px;font-size:12px;font-weight:600;color:#64748b;">{{ si === 0 ? 'Shipping Address' : 'Shipping Address ' + (si+1) }}</p>
-          <p style="margin:0;font-size:13px;line-height:1.7;">
-            {{ sa?.line1 }}<span *ngIf="sa?.line2">, {{ sa?.line2 }}</span><br/>
-            {{ sa?.state }}<span *ngIf="sa?.city">, {{ sa?.city }}</span>
-            <span *ngIf="sa?.pincode"> - {{ sa?.pincode }}</span><br/>
-            {{ sa?.country }}
-          </p>
-        </div>
-      </div>
+      <ng-container *ngIf="previewCustomer.shippingAddresses?.length">
+        <ng-container *ngFor="let sa of previewCustomer.shippingAddresses; let si = index">
+          <ng-container *ngTemplateOutlet="addrPreview; context: { addr: sa, title: si === 0 ? 'Shipping Address' : 'Shipping Address ' + (si + 1) }"></ng-container>
+        </ng-container>
+      </ng-container>
 
       <!-- Product Preferences -->
       <div class="section-card" *ngIf="previewCustomer.productMaterials?.length">
@@ -337,6 +313,40 @@
       </div>
 
     </div>
+
+    <!-- Address preview sub-template -->
+    <ng-template #addrPreview let-addr="addr" let-title="title">
+      <div class="section-card" *ngIf="addr">
+        <h3 class="section-header" style="font-size:14px;">{{ title }}</h3>
+        <p style="margin:0 0 6px;font-size:13px;line-height:1.7;">
+          <span *ngIf="addr.line1">{{ addr.line1 }}<br/></span>
+          <span *ngIf="addr.line2">{{ addr.line2 }}<br/></span>
+          {{ addr.state }}<span *ngIf="addr.city">, {{ addr.city }}</span>
+          <span *ngIf="addr.pincode"> - {{ addr.pincode }}</span>
+          <span *ngIf="addr.country"><br/>{{ addr.country }}</span>
+          <span *ngIf="addr.gstin"><br/>GSTIN: {{ addr.gstin }}</span>
+        </p>
+        <div *ngIf="addr.gstFile" style="margin-bottom:6px;">
+          <a [href]="addr.gstFile.data" target="_blank" [download]="addr.gstFile.name"
+            style="font-size:12px;color:#4a6fa5;text-decoration:none;">
+            📎 GST Document: {{ addr.gstFile.name }}
+          </a>
+        </div>
+        <ng-container *ngIf="addr.contacts?.length">
+          <div *ngFor="let cp of addr.contacts; let ci = index"
+            style="margin-top:6px;padding-top:6px;border-top:1px solid #f1f5f9;">
+            <span style="font-size:11px;color:#64748b;display:block;">{{ addr.contacts.length > 1 ? 'Contact ' + (ci+1) : 'Contact Person' }}</span>
+            <strong style="font-size:13px;">{{ cp.contactPerson || '-' }}</strong>
+            <span *ngIf="cp.department" style="font-size:12px;color:#64748b;margin-left:6px;">({{ cp.department }})</span>
+            <div style="font-size:12px;margin-top:2px;">
+              <span *ngIf="cp.mobile">{{ cp.mobileCode || '+91' }} {{ cp.mobile }}</span>
+              <span *ngIf="cp.mobile && cp.email"> &nbsp;·&nbsp; </span>
+              <span *ngIf="cp.email">{{ cp.email }}</span>
+            </div>
+          </div>
+        </ng-container>
+      </div>
+    </ng-template>
 
     <div class="modal-footer">
       <button type="button" class="btn btn-secondary" (click)="closePreviewModal()">Close</button>
@@ -438,6 +448,34 @@
           </div>
         </div>
 
+      </div>
+
+      <!-- ── OFFICE ADDRESS ── -->
+      <div class="section-card">
+        <h3 class="section-header">
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+            <path d="M15.75 7.5L9 1.5 2.25 7.5v8.25a1.5 1.5 0 001.5 1.5h10.5a1.5 1.5 0 001.5-1.5V7.5z"
+              stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+            <path d="M6.75 17.25V9h4.5v8.25" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+              stroke-linejoin="round" />
+          </svg>
+          Office Address
+        </h3>
+        <ng-container [ngTemplateOutlet]="addrBlock"
+          [ngTemplateOutletContext]="{ addr: newCustomer.officeAddress, prefix: 'oa_', hideGst: true }">
+        </ng-container>
+      </div>
+
+      <!-- ── TAX DOCUMENTS ── -->
+      <div class="section-card">
+        <h3 class="section-header">
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+            <path d="M10.5 1.5H4.5A1.5 1.5 0 003 3v12a1.5 1.5 0 001.5 1.5h9A1.5 1.5 0 0015 15V6L10.5 1.5z"
+              stroke="currentColor" stroke-width="1.5" />
+            <path d="M10.5 1.5V6H15" stroke="currentColor" stroke-width="1.5" />
+          </svg>
+          Tax Documents
+        </h3>
         <div class="row-2">
           <div class="form-group">
             <label class="form-label">PAN</label>
@@ -466,22 +504,6 @@
             <small *ngIf="newCustomer.msmeFile" class="file-name">📎 {{ newCustomer.msmeFile.name }}</small>
           </div>
         </div>
-      </div>
-
-      <!-- ── OFFICE ADDRESS ── -->
-      <div class="section-card">
-        <h3 class="section-header">
-          <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-            <path d="M15.75 7.5L9 1.5 2.25 7.5v8.25a1.5 1.5 0 001.5 1.5h10.5a1.5 1.5 0 001.5-1.5V7.5z"
-              stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
-            <path d="M6.75 17.25V9h4.5v8.25" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
-              stroke-linejoin="round" />
-          </svg>
-          Office Address
-        </h3>
-        <ng-container [ngTemplateOutlet]="addrBlock"
-          [ngTemplateOutletContext]="{ addr: newCustomer.officeAddress, prefix: 'oa_', hideGst: true }">
-        </ng-container>
       </div>
 
       <!-- ── PRIMARY CONTACT PERSON ── -->
@@ -646,8 +668,16 @@
             <div style="display:flex; gap:8px; align-items:center;">
               <button type="button" class="btn btn-secondary" style="font-size:11px; padding:3px 10px;"
                 (click)="copyOfficeToShipping(si)">Same as Office</button>
-              <button type="button" class="btn btn-secondary" style="font-size:11px; padding:3px 10px;"
-                (click)="copyBillingToShipping(si)">Same as Billing</button>
+              <ng-container *ngIf="showBilling2; else singleBilling">
+                <button type="button" class="btn btn-secondary" style="font-size:11px; padding:3px 10px;"
+                  (click)="copyBillingToShippingDirect(si, 1)">Same as Billing 1</button>
+                <button type="button" class="btn btn-secondary" style="font-size:11px; padding:3px 10px;"
+                  (click)="copyBillingToShippingDirect(si, 2)">Same as Billing 2</button>
+              </ng-container>
+              <ng-template #singleBilling>
+                <button type="button" class="btn btn-secondary" style="font-size:11px; padding:3px 10px;"
+                  (click)="copyBillingToShipping(si)">Same as Billing</button>
+              </ng-template>
               <button *ngIf="newCustomer.shippingAddresses.length > 1" type="button" class="btn btn-cancel"
                 style="font-size:11px; padding:3px 10px;" (click)="removeShippingAddress(si)">Remove</button>
             </div>
@@ -748,16 +778,6 @@
   </div>
 </div>
 
-<!-- ─── BILLING CHOICE MODAL ─── -->
-<div *ngIf="showBillingChoiceModal" class="modal-overlay" (click)="showBillingChoiceModal = false">
-  <div class="modal-content" style="max-width:360px;padding:24px;" (click)="$event.stopPropagation()">
-    <h3 style="margin:0 0 16px;font-size:16px;">Which billing address?</h3>
-    <div style="display:flex;gap:12px;">
-      <button type="button" class="btn btn-primary" (click)="applyBillingChoice(1)">Billing Address 1</button>
-      <button type="button" class="btn btn-secondary" (click)="applyBillingChoice(2)">Billing Address 2</button>
-    </div>
-  </div>
-</div>
 
 <!-- ─── REUSABLE ADDRESS BLOCK TEMPLATE ─── -->
 <ng-template #addrBlock let-addr="addr" let-prefix="prefix" let-disabled="disabled" let-hideGst="hideGst">
@@ -815,29 +835,50 @@
       </small>
     </div>
   </div>
-  <div class="row-2">
-    <div class="form-group">
-      <label class="form-label">Contact Person</label>
-      <input type="text" class="form-input" [(ngModel)]="addr.contactPerson" [name]="prefix+'cp'" [disabled]="disabled" />
+  <div style="border-top:1px solid #e2e8f0;margin-top:12px;padding-top:12px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+      <span style="font-size:13px;font-weight:600;color:#334155;">Contact Person(s)</span>
+      <button *ngIf="!disabled" type="button" class="btn btn-secondary"
+        style="padding:3px 10px;font-size:12px;" (click)="addAddrContact(addr)">+ Add</button>
     </div>
-    <div class="form-group">
-      <label class="form-label">Department</label>
-      <input type="text" class="form-input" [(ngModel)]="addr.department" [name]="prefix+'dept'" [disabled]="disabled" />
-    </div>
-  </div>
-  <div class="row-2">
-    <div class="form-group">
-      <label class="form-label">Email ID</label>
-      <input type="email" class="form-input" [(ngModel)]="addr.email" [name]="prefix+'email'" [disabled]="disabled" />
-    </div>
-    <div class="form-group">
-      <label class="form-label">Mobile No.</label>
-      <div style="display:flex;gap:6px">
-        <select [ngModel]="addr.mobileCode ?? '+91'" (ngModelChange)="addr.mobileCode=$event"
-          [name]="prefix+'mobileCode'" [disabled]="disabled" class="form-select" style="width:80px;flex-shrink:0">
-          <option *ngFor="let cc of countryCodes" [value]="cc">{{ cc }}</option>
-        </select>
-        <input type="text" class="form-input" [(ngModel)]="addr.mobile" [name]="prefix+'mobile'" [disabled]="disabled" />
+    <div *ngFor="let cp of addr.contacts; let ci = index"
+      style="border:1px solid #e2e8f0;border-radius:6px;padding:12px;margin-bottom:8px;">
+      <div *ngIf="addr.contacts.length > 1"
+        style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <span style="font-size:12px;font-weight:600;color:#64748b;">Contact {{ ci + 1 }}</span>
+        <button *ngIf="!disabled" type="button" class="doc-remove-btn"
+          (click)="removeAddrContact(addr, ci)">✕</button>
+      </div>
+      <div class="row-2">
+        <div class="form-group">
+          <label class="form-label">Contact Person</label>
+          <input type="text" class="form-input" [(ngModel)]="cp.contactPerson"
+            [name]="prefix+'cp'+ci" [disabled]="disabled" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Department</label>
+          <input type="text" class="form-input" [(ngModel)]="cp.department"
+            [name]="prefix+'dept'+ci" [disabled]="disabled" />
+        </div>
+      </div>
+      <div class="row-2">
+        <div class="form-group">
+          <label class="form-label">Email ID</label>
+          <input type="email" class="form-input" [(ngModel)]="cp.email"
+            [name]="prefix+'email'+ci" [disabled]="disabled" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Mobile No.</label>
+          <div style="display:flex;gap:6px">
+            <select [ngModel]="cp.mobileCode ?? '+91'" (ngModelChange)="cp.mobileCode=$event"
+              [name]="prefix+'mobileCode'+ci" [disabled]="disabled" class="form-select"
+              style="width:80px;flex-shrink:0">
+              <option *ngFor="let cc of countryCodes" [value]="cc">{{ cc }}</option>
+            </select>
+            <input type="text" class="form-input" [(ngModel)]="cp.mobile"
+              [name]="prefix+'mobile'+ci" [disabled]="disabled" />
+          </div>
+        </div>
       </div>
     </div>
   </div>
