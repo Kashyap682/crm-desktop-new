@@ -259,9 +259,9 @@
         <div class="row-2">
           <div class="form-group">
             <label class="form-label">Customer Name</label>
-            <select class="form-select" [(ngModel)]="currentInquiry!.customerName" name="customerName" (change)="onCustomerContactChange()">
+            <select class="form-select" [(ngModel)]="selectedContactRole" name="selectedContactRole" (change)="onCustomerContactChange()">
               <option value="">Select Contact</option>
-              <option *ngFor="let n of contactOptions" [value]="n">{{ n }}</option>
+              <option *ngFor="let n of contactOptions" [value]="n.key">{{ n.label }}</option>
             </select>
           </div>
           <div class="form-group">

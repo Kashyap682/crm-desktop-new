@@ -37,6 +37,7 @@
           <th>Company</th>
           <th>Customer</th>
           <th>Items</th>
+          <th>Decision</th>
           <th></th>
         </tr>
       </thead>
@@ -47,6 +48,17 @@
           <td>{{ inq.companyName || '—' }}</td>
           <td>{{ inq.customerName }}</td>
           <td>{{ inq.items?.length || 0 }} item(s)</td>
+          <td>
+            <select class="status-select"
+              [ngModel]="inq.decision || ''"
+              (ngModelChange)="updateInquiryDecision(inq, $event)">
+              <option value="">Pending</option>
+              <option value="Under Negotiation">Under Negotiation</option>
+              <option value="Order Received">Order Received</option>
+              <option value="Order Lost">Order Lost</option>
+              <option value="Rejected">Rejected</option>
+            </select>
+          </td>
           <td>
             <button class="btn btn-primary" style="padding: 4px 12px; font-size: 13px;" (click)="openCreateOfferFromInquiry(inq)">
               Create Offer

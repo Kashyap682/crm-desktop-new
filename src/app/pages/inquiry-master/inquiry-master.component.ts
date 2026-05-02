@@ -124,7 +124,8 @@ export class InquiryMasterComponent {
   lostRemarksText: string = '';
   customers: any[] = [];
   inventory: any[] = [];
-  contactOptions: string[] = [];
+  contactOptions: Array<{ key: 'primary' | 'secondary'; label: string }> = [];
+  selectedContactRole: 'primary' | 'secondary' = 'primary';
 
   countryCodes: string[] = [
     '+91', '+1', '+44', '+971', '+966', '+65', '+61', '+49', '+86', '+81',
@@ -198,19 +199,21 @@ export class InquiryMasterComponent {
      COMPANY SELECTION
   ----------------------------- */
   private buildFullName(contact: any): string {
-    return contact ? [contact.firstName, contact.lastName].filter(Boolean).join(' ') : '';
+    return contact ? [contact.title, contact.firstName, contact.lastName].filter(Boolean).join(' ') : '';
   }
 
   private populateContactOptions(companyName?: string): void {
     if (!companyName) { this.contactOptions = []; return; }
     const customer = this.customers.find(c => c.companyName === companyName);
     if (!customer) { this.contactOptions = []; return; }
-    const names: string[] = [];
-    const n1 = this.buildFullName(customer.primaryContact);
-    const n2 = this.buildFullName(customer.secondaryContact);
-    if (n1) names.push(n1);
-    if (n2) names.push(n2);
-    this.contactOptions = names;
+    const options: Array<{ key: 'primary' | 'secondary'; label: string }> = [];
+    const p = this.buildFullName(customer.primaryContact) || customer.name || customer.companyName || 'N/A';
+    const s = this.buildFullName(customer.secondaryContact) || customer.name || customer.companyName || 'N/A';
+    options.push({ key: 'primary', label: `Primary Contact - ${p}` });
+    if (customer.secondaryContact?.firstName || customer.secondaryContact?.lastName) {
+      options.push({ key: 'secondary', label: `Secondary Contact - ${s}` });
+    }
+    this.contactOptions = options;
   }
 
   onCompanySelect() {
@@ -225,7 +228,7 @@ export class InquiryMasterComponent {
     // Build contact name dropdown options
     this.populateContactOptions(customer.companyName);
     const pc = customer.primaryContact;
-    this.currentInquiry.customerName = this.buildFullName(pc) || customer.name || '';
+    this.selectedContactRole = 'primary';
     this.applySelectedContactDetails();
 
     // Phone / email — check primaryContact first, then top-level
@@ -398,9 +401,10 @@ export class InquiryMasterComponent {
     if (!this.currentInquiry?.companyName) return;
     const customer = this.customers.find(c => c.companyName === this.currentInquiry!.companyName);
     if (!customer) return;
-    const fullName = this.currentInquiry.customerName;
-    const contactCandidates = [customer.primaryContact, customer.secondaryContact].filter(Boolean);
-    const selected = contactCandidates.find((c: any) => this.buildFullName(c) === fullName) || customer.primaryContact;
+    const selected = this.selectedContactRole === 'secondary'
+      ? (customer.secondaryContact || customer.primaryContact)
+      : customer.primaryContact;
+    this.currentInquiry.customerName = this.buildFullName(selected) || customer.name || '';
     this.currentInquiry.customerPhone = selected?.mobile || customer.mobile || '';
     this.currentInquiry.customerPhoneCode = selected?.mobileCode || '+91';
     this.currentInquiry.email = selected?.email || customer.email || '';
