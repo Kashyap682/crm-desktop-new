@@ -124,11 +124,19 @@ export class InquiryMasterComponent {
   lostRemarksText: string = '';
   customers: any[] = [];
   inventory: any[] = [];
-  contactOptions: string[] = [];
+  contactOptions: Array<{ key: 'primary' | 'secondary'; label: string }> = [];
+  selectedContactRole: 'primary' | 'secondary' = 'primary';
 
   countryCodes: string[] = [
     '+91', '+1', '+44', '+971', '+966', '+65', '+61', '+49', '+86', '+81',
     '+60', '+62', '+880', '+92', '+94', '+977', '+66', '+84', '+55', '+27'
+  ];
+  indianStates: string[] = [
+    'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh',
+    'Goa', 'Gujarat', 'Haryana', 'Himachal Pradesh', 'Jharkhand', 'Karnataka',
+    'Kerala', 'Madhya Pradesh', 'Maharashtra', 'Manipur', 'Meghalaya', 'Mizoram',
+    'Nagaland', 'Odisha', 'Punjab', 'Rajasthan', 'Sikkim', 'Tamil Nadu',
+    'Telangana', 'Tripura', 'Uttar Pradesh', 'Uttarakhand', 'West Bengal'
   ];
 
   constructor(
@@ -191,19 +199,21 @@ export class InquiryMasterComponent {
      COMPANY SELECTION
   ----------------------------- */
   private buildFullName(contact: any): string {
-    return contact ? [contact.firstName, contact.lastName].filter(Boolean).join(' ') : '';
+    return contact ? [contact.title, contact.firstName, contact.lastName].filter(Boolean).join(' ') : '';
   }
 
   private populateContactOptions(companyName?: string): void {
     if (!companyName) { this.contactOptions = []; return; }
     const customer = this.customers.find(c => c.companyName === companyName);
     if (!customer) { this.contactOptions = []; return; }
-    const names: string[] = [];
-    const n1 = this.buildFullName(customer.primaryContact);
-    const n2 = this.buildFullName(customer.secondaryContact);
-    if (n1) names.push(n1);
-    if (n2) names.push(n2);
-    this.contactOptions = names;
+    const options: Array<{ key: 'primary' | 'secondary'; label: string }> = [];
+    const p = this.buildFullName(customer.primaryContact) || customer.name || customer.companyName || 'N/A';
+    const s = this.buildFullName(customer.secondaryContact) || customer.name || customer.companyName || 'N/A';
+    options.push({ key: 'primary', label: `Primary Contact - ${p}` });
+    if (customer.secondaryContact?.firstName || customer.secondaryContact?.lastName) {
+      options.push({ key: 'secondary', label: `Secondary Contact - ${s}` });
+    }
+    this.contactOptions = options;
   }
 
   onCompanySelect() {
@@ -218,13 +228,11 @@ export class InquiryMasterComponent {
     // Build contact name dropdown options
     this.populateContactOptions(customer.companyName);
     const pc = customer.primaryContact;
-    this.currentInquiry.customerName = this.buildFullName(pc) || customer.name || '';
+    this.selectedContactRole = 'primary';
+    this.applySelectedContactDetails();
 
     // Phone / email — check primaryContact first, then top-level
-    this.currentInquiry.customerPhone =
-      pc?.mobile || customer.mobile || '';
-    this.currentInquiry.email =
-      pc?.email || customer.email || '';
+    this.currentInquiry.customerPhoneCode = pc?.mobileCode || customer.customerPhoneCode || '+91';
 
     // Build office address string — try officeAddress, then billing as fallback
     const buildAddr = (obj: any): string => {
@@ -383,6 +391,36 @@ export class InquiryMasterComponent {
     const num = match ? parseInt(match[1], 10) : Number(raw);
     if (!Number.isFinite(num) || num <= 0) return raw;
     return `INQ-${String(num).padStart(3, '0')}`;
+  }
+
+  onCustomerContactChange() {
+    this.applySelectedContactDetails();
+  }
+
+  private applySelectedContactDetails() {
+    if (!this.currentInquiry?.companyName) return;
+    const customer = this.customers.find(c => c.companyName === this.currentInquiry!.companyName);
+    if (!customer) return;
+    const selected = this.selectedContactRole === 'secondary'
+      ? (customer.secondaryContact || customer.primaryContact)
+      : customer.primaryContact;
+    this.currentInquiry.customerName = this.buildFullName(selected) || customer.name || '';
+    this.currentInquiry.customerPhone = selected?.mobile || customer.mobile || '';
+    this.currentInquiry.customerPhoneCode = selected?.mobileCode || '+91';
+    this.currentInquiry.email = selected?.email || customer.email || '';
+  }
+
+  async lookupPincode(addr: any, pincode?: string): Promise<void> {
+    if (!addr || !pincode || pincode.length !== 6) return;
+    try {
+      const res = await fetch(`https://api.postalpincode.in/pincode/${pincode}`);
+      const data = await res.json();
+      if (data[0]?.Status === 'Success' && data[0]?.PostOffice?.length) {
+        const po = data[0].PostOffice[0];
+        if (po.State) addr.state = po.State;
+        if (po.District) addr.city = po.District;
+      }
+    } catch (_) { /* ignore lookup errors */ }
   }
 
   private async getNextInquiryId(): Promise<number> {

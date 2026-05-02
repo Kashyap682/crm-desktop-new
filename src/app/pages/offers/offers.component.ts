@@ -132,6 +132,13 @@ export class OffersComponent {
     this.router.navigate(['/create-offer'], { state: { inquiry: inq } });
   }
 
+  async updateInquiryDecision(inq: any, decision: string) {
+    if (!inq) return;
+    inq.decision = decision || '';
+    await this.dbService.put('inquiries', inq);
+    await this.loadInquiries();
+  }
+
   /* ===============================
      Date formatting helpers
   =============================== */

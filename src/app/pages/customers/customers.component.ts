@@ -485,7 +485,6 @@ export class CustomersComponent {
           name: row['Name'] || '',
           companyName: row['Company Name'] || '',
           email: row['Email'] || '',
-          landline: row['Landline'] || '',
           website: row['Website'] || '',
           pan: row['PAN'] || '',
           msme: row['MSME'] || '',
@@ -520,7 +519,6 @@ export class CustomersComponent {
       'Name': c.name || '',
       'Company Name': c.companyName || '',
       'Email': c.email || '',
-      'Landline': c.landline || '',
       'Website': c.website || '',
       'PAN': c.pan || '',
       'MSME': c.msme || '',
@@ -579,6 +577,32 @@ export class CustomersComponent {
     const wb = utils.book_new();
     utils.book_append_sheet(wb, ws, 'Customers');
     writeFile(wb, 'Customer-Template.xlsx');
+  }
+
+  downloadAllCustomersPDF() {
+    const doc = new jsPDF('p', 'mm', 'a4');
+    const rows = this.filteredCustomers();
+    const headers = [['Customer ID', 'Company', 'Primary Contact', 'Mobile', 'Email', 'City', 'State']];
+    const body = rows.map((c: any) => [
+      c.customerId || '-',
+      c.companyName || '-',
+      this.formatContactName(c.primaryContact),
+      c.primaryContact?.mobile || c.mobile || '-',
+      c.email || '-',
+      c.officeAddress?.city || '-',
+      c.officeAddress?.state || '-'
+    ]);
+
+    doc.setFontSize(14);
+    doc.text('Customers Summary', 14, 15);
+    (autoTable as any)(doc, {
+      head: headers,
+      body,
+      startY: 20,
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [0, 31, 63] }
+    });
+    doc.save('Customers-Summary.pdf');
   }
 
   goToInquiries(customer: any) {
