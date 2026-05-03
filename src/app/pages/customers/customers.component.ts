@@ -30,12 +30,6 @@ export class CustomersComponent {
   materialSuggestions: string[] = [];
   activeMaterialIndex: number | null = null;
 
-  businessVerticals: string[] = [
-    'Projects',
-    'Material Distribution Division',
-    'Both'
-  ];
-
   customerTypes = ['Contractor', 'End User', 'Manufacturer', 'Trader'];
 
   indianStates: string[] = [
@@ -155,7 +149,6 @@ export class CustomersComponent {
       website: '',
       mobile: '',
       email: '',
-      gstin: '',
       pan: '',
       panFile: undefined,
       msme: '',
@@ -166,8 +159,7 @@ export class CustomersComponent {
       shippingAddresses: [this.emptyAddr()] as any[],
       primaryContact:   { title: '', firstName: '', lastName: '', mobile: '', email: '', remarks: '' },
       secondaryContact: { title: '', firstName: '', lastName: '', mobile: '', email: '', remarks: '' },
-      productMaterials: [this.emptyMaterial()],
-      businessVertical: ''
+      productMaterials: [this.emptyMaterial()]
     };
   }
 
@@ -289,6 +281,23 @@ export class CustomersComponent {
     await this.dbService.put('customers', customer);
   }
 
+  async removeAddrGstFile(customer: any, addr: any) {
+    addr.gstFile = undefined;
+    await this.dbService.put('customers', customer);
+  }
+
+  async onAddrGstFileSelect(event: any, customer: any, addr: any) {
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async () => {
+      addr.gstFile = { name: file.name, type: file.type, data: reader.result as string };
+      await this.dbService.put('customers', customer);
+    };
+    reader.readAsDataURL(file);
+    event.target.value = '';
+  }
+
   constructor(private router: Router, private dbService: DBService) {
     this.loadFromIndexedDB();
     this.dbService.getAll('inventory').then(inv => this.inventory = inv);
@@ -365,7 +374,6 @@ export class CustomersComponent {
       return {
         ...c,
         mobile: c.mobile || pc.mobile || officeAddr.mobile || '',
-        gstin: c.gstin || billingAddr.gstin || officeAddr.gstin || '',
         officeAddress: officeAddr,
         billing:  billingAddr,
         shippingAddresses: Array.isArray(c.shippingAddresses) && c.shippingAddresses.length
@@ -396,11 +404,13 @@ export class CustomersComponent {
     });
   }
 
-  openEditModal(index: number) {
+  openEditModal(customer: any) {
+    const index = this.customers.findIndex(c => c.id === customer.id);
+    if (index === -1) return;
     const c = JSON.parse(JSON.stringify(this.customers[index]));
     c.officeAddress = this.normalizeAddr(c.officeAddress);
     c.billing  = this.normalizeAddr(c.billing);
-    // Normalize shippingAddresses — migrate legacy `shipping` field
+    c.billing2 = c.billing2 ? this.normalizeAddr(c.billing2) : null;
     if (Array.isArray(c.shippingAddresses) && c.shippingAddresses.length > 0) {
       c.shippingAddresses = c.shippingAddresses.map((a: any) => this.normalizeAddr(a));
     } else {
@@ -432,10 +442,12 @@ export class CustomersComponent {
       || this.newCustomer.companyName;
 
     if (this.isEditing && this.editingIndex !== null) {
-      const existing = this.customers[this.editingIndex];
-      this.newCustomer.id = existing.id;
+      const realIndex = this.customers.findIndex(c => c.id === this.newCustomer.id);
+      const storeIndex = realIndex !== -1 ? realIndex : this.editingIndex;
       await this.dbService.put('customers', this.newCustomer);
-      this.customers[this.editingIndex] = JSON.parse(JSON.stringify(this.newCustomer));
+      if (storeIndex !== null && storeIndex !== -1) {
+        this.customers[storeIndex] = JSON.parse(JSON.stringify(this.newCustomer));
+      }
     } else {
       this.newCustomer.id = Date.now();
       await this.dbService.add('customers', this.newCustomer);
@@ -446,8 +458,10 @@ export class CustomersComponent {
   }
 
   /* ─── Delete / Reset ─── */
-  async deleteCustomer(index: number) {
-    await this.dbService.delete('customers', this.customers[index].id);
+  async deleteCustomer(customer: any) {
+    const index = this.customers.findIndex(c => c.id === customer.id);
+    if (index === -1) return;
+    await this.dbService.delete('customers', customer.id);
     this.customers.splice(index, 1);
   }
 
@@ -469,6 +483,13 @@ export class CustomersComponent {
 
       const existingCustomers = await this.dbService.getAll('customers');
       let lastNumber = this.getLastCustomerNumber(existingCustomers);
+
+      const normalizeId = (raw: any): string => {
+        if (!raw && raw !== 0) return '';
+        const s = String(raw).trim();
+        const m = s.match(/^(?:CUS-?)?(\d+)$/i);
+        return m ? `CUS-${parseInt(m[1]).toString().padStart(3, '0')}` : s;
+      };
 
       const formatted = data.map((row: any) => {
         lastNumber++;
@@ -495,6 +516,10 @@ export class CustomersComponent {
             contacts: [cp]
           };
         };
+        const addrOrNull = (prefix: string) => {
+          const hasData = row[`${prefix} Line1`] || row[`${prefix} City`] || row[`${prefix} State`];
+          return hasData ? addr(prefix) : null;
+        };
         const contact = (prefix: string) => ({
           title: row[`${prefix} Title`] || '',
           firstName: row[`${prefix} First Name`] || '',
@@ -517,18 +542,16 @@ export class CustomersComponent {
         if (!productMaterials.length) productMaterials.push({ material: '', form1: '', form2: '', form3: '' });
         return {
           id: Date.now() + Math.random(),
-          customerId: `CUS-${lastNumber.toString().padStart(3, '0')}`,
+          customerId: normalizeId(row['Customer ID']) || `CUS-${lastNumber.toString().padStart(3, '0')}`,
           customerType: row['Customer Type'] || '',
           companyName: row['Company Name'] || '',
           email: row['Email'] || '',
           website: row['Website'] || '',
-          gstin: row['GSTIN'] || '',
-          businessVertical: row['Business Vertical'] || '',
           pan: row['PAN'] || '',
           msme: row['MSME'] || '',
           officeAddress: addr('Office'),
           billing: addr('Billing'),
-          billing2: null,
+          billing2: addrOrNull('Billing 2'),
           shippingAddresses: [addr('Shipping')],
           primaryContact: contact('Primary Contact'),
           secondaryContact: contact('Secondary Contact'),
@@ -578,10 +601,8 @@ export class CustomersComponent {
       'Customer ID': c.customerId || '',
       'Customer Type': c.customerType || '',
       'Company Name': c.companyName || '',
-      'GSTIN': c.gstin || '',
       'Email': c.email || '',
       'Website': c.website || '',
-      'Business Vertical': c.businessVertical || '',
       'PAN': c.pan || '',
       'MSME': c.msme || '',
       ...addrCols(c.officeAddress, 'Office'),
@@ -736,7 +757,6 @@ export class CustomersComponent {
     row('Company Name:', c.companyName || '-');
     row('Customer ID:', c.customerId || '-');
     row('Customer Type:', c.customerType || '-');
-    if (c.businessVertical) row('Business Vertical:', c.businessVertical);
     row('Email:', c.email || '-');
     row('Website:', c.website || '-');
 
@@ -763,7 +783,6 @@ export class CustomersComponent {
 
     // Tax Documents
     section('Tax Documents');
-    row('GSTIN:', c.gstin || '-');
     row('PAN:', c.pan || '-');
     row('MSME:', c.msme || '-');
 

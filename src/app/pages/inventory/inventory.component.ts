@@ -346,7 +346,17 @@ export class InventoryComponent implements OnInit {
             });
             updatedCount++;
           } else {
-            const productId = row['Product ID'] || row['productId'] || await this.generateNextProductIdByGroup(rowGroup);
+            const rawProductId = row['Product ID'] || row['productId'] || '';
+            const normalizeProductId = (raw: string, group: string): string => {
+              if (!raw) return '';
+              const pfx = this.groupPrefixMap[group] || 'GEN';
+              const full = raw.match(/^INV-([A-Z]+)-(\d+)$/i);
+              if (full) return `INV-${full[1].toUpperCase()}-${parseInt(full[2]).toString().padStart(4, '0')}`;
+              const m = raw.match(/^(?:[A-Z]+-)?(\d+)$/i);
+              if (m) return `INV-${pfx}-${parseInt(m[1]).toString().padStart(4, '0')}`;
+              return raw;
+            };
+            const productId = normalizeProductId(rawProductId, rowGroup) || await this.generateNextProductIdByGroup(rowGroup);
             const itemKey = `${rowLocation}_${rowGroup}_${rowName}_${rowSize}`.toLowerCase();
 
             const thickness = row['Thickness'] || row['thickness'] || '';

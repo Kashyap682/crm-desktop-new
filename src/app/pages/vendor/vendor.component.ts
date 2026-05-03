@@ -432,14 +432,38 @@ export class VendorComponent implements OnInit {
       headers.forEach((h, i) => { o[h] = row[i] ?? ''; });
       return o;
     };
-    const addrFromRow = (r: any, prefix: string) => ({
-      line1: r[`${prefix} Line1`] || '', line2: r[`${prefix} Line2`] || '',
-      city: r[`${prefix} City`] || '', state: r[`${prefix} State`] || '',
-      pincode: r[`${prefix} Pincode`] || '', country: r[`${prefix} Country`] || 'India',
-      gstin: r[`${prefix} GSTIN`] || '', contactPerson: r[`${prefix} Contact`] || '',
-      email: r[`${prefix} Email`] || '', mobile: r[`${prefix} Mobile`] || '',
-      department: r[`${prefix} Department`] || ''
-    });
+    const addrFromRow = (r: any, prefix: string) => {
+      const hasData = r[`${prefix} Line1`] || r[`${prefix} City`] || r[`${prefix} State`];
+      if (!hasData) return null;
+      const cp = {
+        contactPerson: r[`${prefix} Contact`] || '',
+        department: r[`${prefix} Department`] || '',
+        email: r[`${prefix} Email`] || '',
+        mobile: r[`${prefix} Mobile`] || '',
+        mobileCode: '+91'
+      };
+      return {
+        line1: r[`${prefix} Line1`] || '',
+        line2: r[`${prefix} Line2`] || '',
+        city: r[`${prefix} City`] || '',
+        state: r[`${prefix} State`] || '',
+        pincode: r[`${prefix} Pincode`] || '',
+        country: r[`${prefix} Country`] || 'India',
+        gstin: r[`${prefix} GSTIN`] || '',
+        contactPerson: cp.contactPerson,
+        department: cp.department,
+        email: cp.email,
+        mobile: cp.mobile,
+        contacts: [cp]
+      };
+    };
+
+    const normalizeVendorId = (raw: any): string => {
+      if (!raw && raw !== 0) return '';
+      const s = String(raw).trim();
+      const m = s.match(/^(?:VEN-?)?(\d+)$/i);
+      return m ? `VEN-${parseInt(m[1]).toString().padStart(3, '0')}` : s;
+    };
 
     let last = 0;
     this.vendors.forEach(v => {
@@ -452,8 +476,9 @@ export class VendorComponent implements OnInit {
       const r = toObj(rows[i]);
       if (!r['Company Name']) continue;
       last++;
+      const officeAddr = addrFromRow(r, 'Office Address') ?? this.emptyAddr();
       await this.dbService.add('vendors', {
-        vendorId: `VEN-${last.toString().padStart(3, '0')}`,
+        vendorId: normalizeVendorId(r['Vendor ID']) || `VEN-${last.toString().padStart(3, '0')}`,
         vendorType: r['Vendor Type'] || '',
         companyName: r['Company Name'] || '',
         brandName: r['Brand Name'] || '',
@@ -462,14 +487,18 @@ export class VendorComponent implements OnInit {
         msme: r['MSME'] || '',
         paymentTerms: r['Payment Terms'] || '',
         bankIfsc: r['Bank IFSC'] || '',
-        products: r['Products'] ? String(r['Products']).split(',').map((p: string) => p.trim()) : [],
-        officeAddress: addrFromRow(r, 'Office Address'),
-        billing: addrFromRow(r, 'Billing'),
+        products: r['Products'] ? String(r['Products']).split(',').map((p: string) => p.trim()).filter(Boolean) : [],
+        officeAddress: officeAddr,
+        officeAddress2: addrFromRow(r, 'Office Address 2'),
+        billing: addrFromRow(r, 'Billing') ?? officeAddr,
+        billing2: addrFromRow(r, 'Billing 2'),
         shipping: { street: '', area: '', city: '', state: '', pincode: '', country: 'India' },
         primaryContact: {
+          title: r['Primary Contact Title'] || '',
           firstName: r['Primary Contact First Name'] || '',
           lastName: r['Primary Contact Last Name'] || '',
           mobile: r['Primary Contact Mobile'] || '',
+          mobileCode: '+91',
           email: r['Primary Contact Email'] || '',
           location: r['Primary Contact Location'] || '',
           remarks: r['Primary Contact Remarks'] || ''
@@ -481,37 +510,44 @@ export class VendorComponent implements OnInit {
   }
 
   private vendorRow(v: any) {
-    const addr = (a: any, prefix: string) => ({
-      [`${prefix} Line1`]: a?.line1 || a?.street || '',
-      [`${prefix} Line2`]: a?.line2 || a?.area || '',
-      [`${prefix} City`]: a?.city || '',
-      [`${prefix} State`]: a?.state || '',
-      [`${prefix} Pincode`]: a?.pincode || '',
-      [`${prefix} Country`]: a?.country || '',
-      [`${prefix} GSTIN`]: a?.gstin || '',
-      [`${prefix} Contact`]: a?.contactPerson || '',
-      [`${prefix} Email`]: a?.email || '',
-      [`${prefix} Mobile`]: a?.mobile || '',
-      [`${prefix} Department`]: a?.department || ''
-    });
+    const addr = (a: any, prefix: string) => {
+      const cp = Array.isArray(a?.contacts) && a.contacts.length ? a.contacts[0] : {};
+      return {
+        [`${prefix} Line1`]: a?.line1 || a?.street || '',
+        [`${prefix} Line2`]: a?.line2 || a?.area || '',
+        [`${prefix} City`]: a?.city || '',
+        [`${prefix} State`]: a?.state || '',
+        [`${prefix} Pincode`]: a?.pincode || '',
+        [`${prefix} Country`]: a?.country || '',
+        [`${prefix} GSTIN`]: a?.gstin || '',
+        [`${prefix} Contact`]: cp?.contactPerson || a?.contactPerson || '',
+        [`${prefix} Department`]: cp?.department || a?.department || '',
+        [`${prefix} Email`]: cp?.email || a?.email || '',
+        [`${prefix} Mobile`]: cp?.mobile || a?.mobile || '',
+      };
+    };
     return {
+      'Vendor ID': v.vendorId || '',
       'Vendor Type': v.vendorType || '',
       'Company Name': v.companyName || '',
       'Brand Name': v.brandName || '',
       'Category': v.category || '',
       'Products': (v.products || []).join(', '),
-      'Bank IFSC': v.bankIfsc || '',
       'PAN': v.pan || '',
       'MSME': v.msme || '',
+      'Bank IFSC': v.bankIfsc || '',
       'Payment Terms': v.paymentTerms || '',
       ...addr(v.officeAddress, 'Office Address'),
+      ...addr(v.officeAddress2 ?? null, 'Office Address 2'),
       ...addr(v.billing, 'Billing'),
+      ...addr(v.billing2 ?? null, 'Billing 2'),
+      'Primary Contact Title': v.primaryContact?.title || '',
       'Primary Contact First Name': v.primaryContact?.firstName || '',
       'Primary Contact Last Name': v.primaryContact?.lastName || '',
       'Primary Contact Mobile': v.primaryContact?.mobile || '',
       'Primary Contact Email': v.primaryContact?.email || '',
       'Primary Contact Location': v.primaryContact?.location || '',
-      'Primary Contact Remarks': v.primaryContact?.remarks || ''
+      'Primary Contact Remarks': v.primaryContact?.remarks || '',
     };
   }
 
