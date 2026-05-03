@@ -698,10 +698,19 @@ export class CustomersComponent {
   downloadCustomerPDF(c: any) {
     const doc = new jsPDF('p', 'mm', 'a4');
     const pW = doc.internal.pageSize.getWidth();
+    const pH = doc.internal.pageSize.getHeight();
     const L = 14;
     let y = 15;
 
+    const checkPage = (needed = 12) => {
+      if (y + needed > pH - 15) {
+        doc.addPage();
+        y = 15;
+      }
+    };
+
     const section = (title: string) => {
+      checkPage(16);
       y += 4;
       doc.setFillColor(0, 31, 63);
       doc.rect(L, y, pW - L * 2, 7, 'F');
@@ -715,10 +724,11 @@ export class CustomersComponent {
 
     const row = (label: string, value: string, x2 = 80) => {
       doc.setFontSize(9);
+      const lines = doc.splitTextToSize(value || '-', pW - x2 - L);
+      checkPage(lines.length * 5 + 2);
       doc.setFont('helvetica', 'bold');
       doc.text(label, L, y);
       doc.setFont('helvetica', 'normal');
-      const lines = doc.splitTextToSize(value || '-', pW - x2 - L);
       doc.text(lines, x2, y);
       y += lines.length * 5 + 1;
     };
@@ -757,6 +767,7 @@ export class CustomersComponent {
     row('Company Name:', c.companyName || '-');
     row('Customer ID:', c.customerId || '-');
     row('Customer Type:', c.customerType || '-');
+    if (c.businessVertical) row('Business Vertical:', c.businessVertical);
     row('Email:', c.email || '-');
     row('Website:', c.website || '-');
 
