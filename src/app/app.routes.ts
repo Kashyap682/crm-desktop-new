@@ -91,6 +91,11 @@ export const routes: Routes = [
       {
         path: 'rfq',
         loadComponent: () => import('./pages/rfq/rfq.component').then(m => m.RfqComponent)
+      },
+
+      {
+        path: 'database',
+        loadComponent: () => import('./pages/database/database.component').then(m => m.DatabaseComponent)
       }
     ]
   }

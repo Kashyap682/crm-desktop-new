@@ -125,8 +125,10 @@ export class SalesOrderComponent implements OnInit, AfterViewInit {
     // ── Auto-fill from Offer (when coming from Offers page "Create Sales Order") ──
     if (offerState && !this.inquiry) {
       this.newSale = true;
+      this.showForm = true;
       await this.generateSalesOrderNo();
       this.salesOrderDate = new Date().toISOString().slice(0, 10);
+      this.selectedCompanyName = offerState.customerSnapshot?.companyName || offerState.customerName || '';
       this.customerName = offerState.customerName || '';
 
       const customer: any = await this.loadCustomerByName(this.customerName);
@@ -190,9 +192,7 @@ export class SalesOrderComponent implements OnInit, AfterViewInit {
     if (customer) {
       this.customerId = customer.customerId || customer.id || '';
       this.customerName = customer.name || customer.companyName || '';
-      this.contactPerson = customer.primaryContact
-        ? `${customer.primaryContact.firstName || ''} ${customer.primaryContact.lastName || ''}`.trim()
-        : customer.contactPerson || '';
+      this.contactPerson = this.formatContactName(customer.primaryContact) || customer.contactPerson || '';
       this.contactNo = customer.primaryContact?.mobile || customer.mobile || '';
       this.gstNo = customer.gstin || customer.officeAddress?.gstin || '';
       this.billAddr = this.formatAddress(customer.officeAddress || customer.billing);
@@ -342,9 +342,7 @@ export class SalesOrderComponent implements OnInit, AfterViewInit {
       if (customer) {
         this.customerId = customer.customerId || customer.id || '';
         this.customerName = customer.name || customer.companyName || '';
-        this.contactPerson = customer.primaryContact?.firstName
-          ? `${customer.primaryContact.firstName} ${customer.primaryContact.lastName || ''}`.trim()
-          : (customer.contactPerson || '');
+        this.contactPerson = this.formatContactName(customer.primaryContact) || customer.contactPerson || '';
         this.contactNo = customer.primaryContact?.mobile || customer.mobile || '';
         this.gstNo = customer.gstin || customer.officeAddress?.gstin || '';
 
@@ -1162,6 +1160,14 @@ export class SalesOrderComponent implements OnInit, AfterViewInit {
   }
 
   // Format Helpers
+
+  /** Format contact name as "Ms. Tisya Pawar" — title gets a period, fallback to contactPerson */
+  formatContactName(contact: any): string {
+    if (!contact) return '';
+    const title = contact.title ? contact.title.replace(/\.?$/, '.') : '';
+    return [title, contact.firstName, contact.lastName].filter(Boolean).join(' ').trim();
+  }
+
   formatAddress(addr: any): string {
     if (!addr) return '';
     const parts = [
@@ -1340,6 +1346,18 @@ export class SalesOrderComponent implements OnInit, AfterViewInit {
       img.onerror = reject;
       img.src = path;
     });
+  }
+
+  /* ── C34: Send via Email ──────────────────────────────── */
+  showEmailDropdown = false;
+  emailPresets = ['ak@navbharatgroup.com', 'rs@navbharatgroup.com'];
+
+  sendSalesOrderEmail(recipient: string) {
+    this.showEmailDropdown = false;
+    const subject = `Sales Order ${this.salesOrderNo} – ${this.selectedCompanyName || this.customerName}`;
+    const body = `Dear Sir/Ma'am,\n\nPlease find attached Sales Order ${this.salesOrderNo}.\n\nRegards,\nNavbharat Insulation & Engg Co`;
+    const params = new URLSearchParams({ subject, body });
+    window.open(`mailto:${recipient}?${params.toString()}`);
   }
 
   // Drag & Drop

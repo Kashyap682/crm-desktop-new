@@ -2,6 +2,51 @@
    INQUIRY COMPONENT - MODERN UI
    =================================== */
 
+/* ── Dial-code custom dropdown (matches customers module) ── */
+.inq-dial-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  height: 38px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+  user-select: none;
+  flex-shrink: 0;
+  min-width: 92px;
+}
+.inq-dial-wrap:hover { border-color: #4a6fa5; }
+.inq-dial-code  { font-size: 13px; font-weight: 600; color: #2d3748; }
+.inq-dial-caret { font-size: 10px; color: #718096; margin-left: 2px; }
+.inq-dial-flag  { width: 20px; height: 15px; object-fit: cover; border-radius: 2px; flex-shrink: 0; }
+.inq-dial-list {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 600;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+  min-width: 220px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.inq-dial-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  font-size: 13px;
+  color: #2d3748;
+  cursor: pointer;
+}
+.inq-dial-option:hover { background: #eef4ff; }
+.inq-dial-option img { width: 22px; height: 16px; object-fit: cover; border-radius: 2px; flex-shrink: 0; }
+
 /* Autofill wrapper */
 .autofill-wrapper {
   position: relative;

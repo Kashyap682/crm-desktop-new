@@ -39,6 +39,7 @@ interface OfferLetter {
 export class OffersComponent {
 
   offers: any[] = [];
+  proformas: any[] = [];
   inquiries: any[] = [];
   showViewModal = false;
   selectedOffer: any = null;
@@ -54,7 +55,7 @@ export class OffersComponent {
     { value: 'under_negotiation', label: 'Under Negotiation' },
     { value: 'order_received', label: 'Order Received' },
     { value: 'order_lost', label: 'Order Lost' },
-    { value: 'rejected', label: 'Rejected' }
+    { value: 'rejected', label: 'Regret' }
   ];
 
 
@@ -186,12 +187,21 @@ export class OffersComponent {
     return matches[0];
   }
 
+  /** Returns all item names from an offer joined with " & " */
+  getOfferItemNames(offer: any): string {
+    return (offer?.items || [])
+      .map((it: any) => (it.name || '').trim())
+      .filter(Boolean)
+      .join(' & ');
+  }
+
   async onSubjectProductChange(item: any) {
     if (!item) return;
 
     this.selectedSubjectItem = item;
 
-    this.offerLetter.subjectProduct = item.name || '';
+    // Subject shows ALL items, not just the selected one
+    this.offerLetter.subjectProduct = this.getOfferItemNames(this.selectedOffer);
     this.offerLetter.material = item.name || '';
 
     const qty = item.qty ?? '';
@@ -237,16 +247,45 @@ export class OffersComponent {
       if (!row.offerRef && row.id) row.offerRef = this.generateOfferRef(row.id);
     });
     this.offers = data.filter((o: any) => o.status !== 'superseded').reverse();
+    this.proformas = await this.dbService.getAll('proformas');
+
+    // Auto-open email modal when redirected from "Save & Send Email"
+    const state = history.state as any;
+    if (state?.openEmailForRef) {
+      const target = this.offers.find((o: any) => o.offerRef === state.openEmailForRef);
+      if (target) {
+        setTimeout(() => this.openEmailModal(target), 300);
+      }
+    }
+  }
+
+  getLinkedPIs(offerId: number): any[] {
+    return this.proformas.filter((p: any) => p.linkedOfferId === offerId);
+  }
+
+  getTotalQty(items: any[]): number {
+    return (items || []).reduce((s: number, i: any) => s + (i.qty || 0), 0);
   }
 
   get filteredOffers(): any[] {
     if (!this.selectedStatus) return this.offers;
+    if (this.selectedStatus === 'pending') {
+      // Offers with no status set are treated as pending
+      return this.offers.filter((o: any) => !o.offerStatus || o.offerStatus === 'pending');
+    }
     return this.offers.filter((o: any) => o.offerStatus === this.selectedStatus);
+  }
+
+  isTerminalStatus(status: string): boolean {
+    return ['order_received', 'order_lost', 'rejected'].includes(status);
   }
 
   getStatusCount(status: string): number {
     if (!status) return this.offers.length;
-    if (status === 'pending') return this.getInquiriesForTab('pending').length;
+    if (status === 'pending') {
+      return this.getInquiriesForTab('pending').length +
+             this.offers.filter((o: any) => !o.offerStatus || o.offerStatus === 'pending').length;
+    }
     return this.offers.filter((o: any) => o.offerStatus === status).length;
   }
 
@@ -311,6 +350,28 @@ export class OffersComponent {
     this.viewingHistoryOffer = offer;
   }
 
+  getChangedFields(offer: any): Set<string> {
+    const idx = this.historyOffers.findIndex((o: any) => o.id === offer?.id);
+    if (idx <= 0) return new Set();
+    const prev = this.historyOffers[idx - 1];
+    const changed = new Set<string>();
+    const scalar = ['paymentTerms', 'validity', 'grandTotal', 'date', 'terms', 'gstType', 'freightCharges'];
+    for (const f of scalar) {
+      if (String(offer[f] ?? '') !== String(prev[f] ?? '')) changed.add(f);
+    }
+    const currItems: any[] = offer.items || [];
+    const prevItems: any[] = prev.items || [];
+    currItems.forEach((ci: any, i: number) => {
+      const pi = prevItems[i];
+      if (!pi || String(ci.rate) !== String(pi.rate)) changed.add(`rate_${i}`);
+      if (!pi || String(ci.make ?? '') !== String(pi.make ?? '')) changed.add(`make_${i}`);
+      if (!pi || String(ci.form ?? '') !== String(pi.form ?? '')) changed.add(`form_${i}`);
+      if (!pi || String(ci.density ?? '') !== String(pi.density ?? '')) changed.add(`density_${i}`);
+      if (!pi || String(ci.fsk ?? '') !== String(pi.fsk ?? '')) changed.add(`fsk_${i}`);
+    });
+    return changed;
+  }
+
   createSalesOrderFromOffer(offer: any) {
     this.router.navigate(['/sales-order'], { state: { offer } });
   }
@@ -367,7 +428,7 @@ export class OffersComponent {
 
       // ✅ Auto-fill freight from saved freightCharges on the offer
       if (this.selectedOffer.freightCharges != null && this.selectedOffer.freightCharges > 0) {
-        this.offerLetter['freight'] = `Rs. ${this.selectedOffer.freightCharges}`;
+        this.offerLetter['freight'] = `₹${this.selectedOffer.freightCharges}`;
       }
 
       if (inquiryData && this.selectedOffer.items && this.selectedOffer.items.length > 0) {
@@ -388,8 +449,8 @@ export class OffersComponent {
             this.offerLetter['thickness'] = inquiryItem.thickness;
           }
 
-          if (!this.offerLetter['size'] && inquiryItem.form) {
-            this.offerLetter['size'] = inquiryItem.form;
+          if (!this.offerLetter['size'] && inquiryItem.size) {
+            this.offerLetter['size'] = inquiryItem.size;
           }
         }
 
@@ -420,8 +481,13 @@ export class OffersComponent {
       });
     }
 
-    if (this.selectedOffer?.items?.length && !this.selectedSubjectItem) {
-      this.onSubjectProductChange(this.selectedOffer.items[0]);
+    if (this.selectedOffer?.items?.length) {
+      // Always pre-fill subject with ALL item names
+      this.offerLetter.subjectProduct = this.getOfferItemNames(this.selectedOffer);
+      if (!this.selectedSubjectItem) {
+        this.selectedSubjectItem = this.selectedOffer.items[0];
+        this.offerLetter.material = this.selectedOffer.items[0]?.name || '';
+      }
     }
 
     this.showPdfFormModal = true;
@@ -429,6 +495,12 @@ export class OffersComponent {
 
   closeOfferLetterModal() {
     this.showPdfFormModal = false;
+  }
+
+  async downloadOfferDirect() {
+    await this.openOfferLetterModal();
+    this.showPdfFormModal = false;
+    await this.downloadOfferPDF();
   }
 
   async getCustomerByName(name: string) {
@@ -553,14 +625,17 @@ export class OffersComponent {
     if (val('material'))      rows.push(['Material',       val('material')]);
     if (val('density'))       rows.push(['Density',        val('density')]);
     if (val('thickness'))     rows.push(['Thickness',      val('thickness')]);
-    if (val('size'))          rows.push(['Size',           val('size')]);
+    // Use item's own fsk/specifications field — inventory default size was incorrect
+    const firstItem = offer.items?.[0];
+    const specVal = firstItem?.fsk || firstItem?.size || val('size') || '';
+    if (specVal)              rows.push(['Specifications', specVal]);
     if (val('quantity'))      rows.push(['Quantity',       val('quantity')]);
 
     // Rate — final rate incl. GST (grandTotal ÷ total qty)
     const grandTotal = offer.grandTotal;
     const totalQty = (offer.items || []).reduce((s: number, i: any) => s + (i.qty || 0), 0);
     if (grandTotal && totalQty > 0) {
-      rows.push(['Rate', `Rs. ${(grandTotal / totalQty).toFixed(2)} per unit`]);
+      rows.push(['Rate', `₹${(grandTotal / totalQty).toFixed(2)} per unit`]);
     } else if (val('rate')) {
       rows.push(['Rate', val('rate')]);
     }
@@ -634,7 +709,94 @@ export class OffersComponent {
     doc.setFont('helvetica', 'bold');
     doc.text('For NAVBHARAT INSULATION & ENGG CO', L, y);
 
-    // ── FOOTER (centered, fixed at page bottom) ───────────────────────────────
+    // ── TERMS & CONDITIONS + ATTACHMENTS (new page) ──────────────────────────
+    const termsText: string = (offer.terms || '').trim();
+    const allAttachments: any[] = offer.attachments || [];
+    // Split: images get embedded as pages; other files download separately
+    const imageAtts = allAttachments.filter((a: any) => (a.type || '').startsWith('image/'));
+    const otherAtts  = allAttachments.filter((a: any) => !(a.type || '').startsWith('image/'));
+
+    if (termsText || allAttachments.length) {
+      doc.addPage();
+      let ty = 20;
+
+      if (termsText) {
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(10);
+        doc.setTextColor(0);
+        doc.text('Terms & Conditions', L, ty); ty += 7;
+        doc.setLineWidth(0.3);
+        doc.line(L, ty, pageWidth - L, ty); ty += 5;
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8.5);
+        const termsLines = doc.splitTextToSize(termsText, pageWidth - 2 * L);
+        doc.text(termsLines, L, ty);
+        ty += termsLines.length * 4.5 + 8;
+      }
+
+      // ── ENCLOSED WITHIN list (plain text — no broken data: links) ─────────
+      if (allAttachments.length) {
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(9);
+        doc.setTextColor(0);
+        doc.text('Enclosed Within:', L, ty); ty += 6;
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8.5);
+        allAttachments.forEach((att: any, idx: number) => {
+          doc.setTextColor(0);
+          doc.text(`${idx + 1}. ${att.name}`, L + 4, ty);
+          ty += 5;
+        });
+      }
+
+      // Footer on T&C page
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7.5);
+      doc.setTextColor(80);
+      doc.text(
+        'A.N. HOUSE, TPS III, 31ST RD, LINKING RD, BANDRA, MUMBAI, MAHARASHTRA, INDIA 400050',
+        pageWidth / 2, pageHeight - 10, { align: 'center' }
+      );
+      doc.text(
+        'E MAIL: info@navbharatgroup.com   URL: www.navbharatgroup.com',
+        pageWidth / 2, pageHeight - 5, { align: 'center' }
+      );
+    }
+
+    // ── EMBED IMAGE ATTACHMENTS — each on its own page ────────────────────────
+    for (const att of imageAtts) {
+      try {
+        const img = await new Promise<HTMLImageElement>((res, rej) => {
+          const el = new Image();
+          el.onload = () => res(el);
+          el.onerror = rej;
+          el.src = att.data;
+        });
+        const maxW = pageWidth - 2 * L;
+        const ratio = img.naturalHeight / img.naturalWidth;
+        const drawH = Math.min(maxW * ratio, pageHeight - 30);
+        const drawW = drawH / ratio;
+        const fmtMatch = (att.data as string).match(/^data:image\/([a-zA-Z]+)/);
+        const fmt = fmtMatch ? fmtMatch[1].toUpperCase() : 'PNG';
+        doc.addPage();
+        doc.addImage(att.data, fmt, L + (maxW - drawW) / 2, 15, drawW, drawH);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7.5);
+        doc.setTextColor(80);
+        doc.text(
+          'A.N. HOUSE, TPS III, 31ST RD, LINKING RD, BANDRA, MUMBAI, MAHARASHTRA, INDIA 400050',
+          pageWidth / 2, pageHeight - 10, { align: 'center' }
+        );
+        doc.text(
+          'E MAIL: info@navbharatgroup.com   URL: www.navbharatgroup.com',
+          pageWidth / 2, pageHeight - 5, { align: 'center' }
+        );
+        doc.setTextColor(0);
+      } catch { /* skip image if loading fails */ }
+    }
+
+    // ── FOOTER on page 1 (centered, fixed at page bottom) ────────────────────
+    doc.setPage(1);
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7.5);
     doc.setTextColor(80);
@@ -648,6 +810,20 @@ export class OffersComponent {
     );
 
     doc.save(`Offer_${ref}.pdf`);
+
+    // ── DOWNLOAD NON-IMAGE ATTACHMENTS AS SEPARATE FILES ─────────────────────
+    // (PDFs, Excel, Word etc. can't be embedded in jsPDF — download them individually)
+    otherAtts.forEach((att: any, i: number) => {
+      setTimeout(() => {
+        const a = document.createElement('a');
+        a.href = att.data;
+        a.download = att.fileName || att.name;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      }, (i + 1) * 700); // stagger each by 700ms so browser doesn't block them
+    });
+
     this.closeOfferLetterModal();
   }
 
@@ -705,4 +881,160 @@ export class OffersComponent {
     d.setDate(d.getDate() + days);
     return d.toISOString().slice(0, 10);
   }
+
+  /* ── Row expansion ─────────────────────────────────────── */
+  expandedOfferId: number | null = null;
+
+  toggleExpand(offerId: number) {
+    this.expandedOfferId = this.expandedOfferId === offerId ? null : offerId;
+  }
+
+  /* ── C28: Follow-ups (Under Negotiation) ──────────────── */
+  addFollowUp(offer: any) {
+    if (!offer.followUps) offer.followUps = [];
+    offer.followUps.push({
+      date: new Date().toISOString().slice(0, 10),
+      mode: '',
+      contactPersonName: '',
+      contactPersonNumber: '',
+      remarks: '',
+      nextFollowUpDate: ''
+    });
+  }
+
+  async saveFollowUps(offer: any) {
+    await this.dbService.put('offers', offer);
+  }
+
+  removeFollowUp(offer: any, idx: number) {
+    offer.followUps.splice(idx, 1);
+  }
+
+  /* ── C29/C30: Order Received checkboxes & PI ─────────── */
+  async updateOfferField(offer: any, field: string, value: any) {
+    (offer as any)[field] = value;
+    await this.dbService.put('offers', offer);
+  }
+
+  generatePIFromOffer(offer: any) {
+    this.router.navigate(['/proforma-invoice'], { state: { fromOffer: offer } });
+  }
+
+  addPaymentDetail(offer: any) {
+    if (!offer.paymentDetails) offer.paymentDetails = [];
+    offer.paymentDetails.push({ mode: 'Online', amount: 0, date: new Date().toISOString().slice(0, 10) });
+  }
+
+  removePaymentDetail(offer: any, idx: number) {
+    offer.paymentDetails.splice(idx, 1);
+  }
+
+  async savePaymentDetails(offer: any) {
+    await this.dbService.put('offers', offer);
+  }
+
+  /* ── C36: Order Lost reasons table ───────────────────── */
+  addLostDetail(offer: any) {
+    if (!offer.lostDetails) offer.lostDetails = [];
+    offer.lostDetails.push({ date: new Date().toISOString().slice(0, 10), reason: '', price: '', competitor: '' });
+  }
+
+  removeLostDetail(offer: any, idx: number) {
+    offer.lostDetails.splice(idx, 1);
+  }
+
+  async saveLostDetails(offer: any) {
+    await this.dbService.put('offers', offer);
+  }
+
+  /* ── C37: Regret remarks ──────────────────────────────── */
+  async saveRegretRemarks(offer: any) {
+    await this.dbService.put('offers', offer);
+  }
+
+  /* ── C15: Acknowledgement — Send to Customer ─────────── */
+  sendAcknowledgement(offer: any) {
+    const customer = offer.customerSnapshot;
+    const primaryEmail  = customer?.primaryContact?.email || customer?.email || '';
+    const secondaryEmail = customer?.secondaryContact?.email || '';
+    const subject = encodeURIComponent(`Order Acknowledgement — ${offer.offerRef || ''}`);
+    const body = encodeURIComponent(
+      `Dear ${offer.customerName || 'Sir/Ma\'am'},\n\nWe acknowledge receipt of your order against our offer ${offer.offerRef || ''}.\n\nThank you for your business.\n\nRegards,\nNavbharat Insulation & Engg Co`
+    );
+    const cc = secondaryEmail ? `&cc=${encodeURIComponent(secondaryEmail)}` : '';
+    window.open(`mailto:${primaryEmail}?subject=${subject}${cc}&body=${body}`);
+  }
+
+  /* ── C15: PO Copy Attachments ───────────────────────── */
+  addPoCopyAttachment(offer: any, event: Event) {
+    const input = event.target as HTMLInputElement;
+    if (!input.files?.length) return;
+    if (!offer.poCopyAttachments) offer.poCopyAttachments = [];
+    const file = input.files[0];
+    const reader = new FileReader();
+    reader.onload = async (e: any) => {
+      offer.poCopyAttachments.push({ name: file.name, type: file.type, data: e.target.result });
+      await this.dbService.put('offers', offer);
+    };
+    reader.readAsDataURL(file);
+    input.value = '';
+  }
+
+  async removePoCopyAttachment(offer: any, idx: number) {
+    offer.poCopyAttachments.splice(idx, 1);
+    await this.dbService.put('offers', offer);
+  }
+
+  /* ── C21: Send offer via email ────────────────────────── */
+  showEmailModal = false;
+  emailForm: any = { to: '', cc: '', bcc: '', subject: '', body: '' };
+
+  async openEmailModal(offer: any) {
+    this.selectedOffer = offer;
+    const customer = offer.customerSnapshot;
+    // Pull email from primary contact → secondary contact → direct email field
+    const primaryEmail  = customer?.primaryContact?.email || '';
+    const secondaryEmail = customer?.secondaryContact?.email || '';
+    const directEmail   = customer?.email || '';
+    const toEmail  = primaryEmail  || directEmail || '';
+    const ccEmail  = secondaryEmail || 'ak@navbharatgroup.com';
+    this.emailForm = {
+      to: toEmail,
+      cc: ccEmail,
+      bcc: 'rs@navbharatgroup.com',
+      subject: `Your enquiry for supply of ${this.getOfferItemNames(offer)}`,
+      body: `Dear ${offer.customerName || 'Sir/Ma\'am'},\n\nPlease find attached our offer ${offer.offerRef || ''} for your kind consideration.\n\nRegards,\nNavbharat Insulation & Engg Co`
+    };
+    this.showEmailModal = true;
+  }
+
+  closeEmailModal() {
+    this.showEmailModal = false;
+  }
+
+  async sendOfferEmail() {
+    const { to, cc, bcc, subject, body } = this.emailForm;
+    const params = new URLSearchParams();
+    if (cc)  params.set('cc',  cc);
+    if (bcc) params.set('bcc', bcc);
+    params.set('subject', subject);
+    params.set('body', body);
+    window.open(`mailto:${to}?${params.toString()}`);
+
+    if (this.selectedOffer) {
+      this.selectedOffer.sentAt = new Date().toISOString();
+      await this.dbService.put('offers', this.selectedOffer);
+      await this.loadOffers();
+    }
+    this.closeEmailModal();
+  }
+
+  /* ── C14: Sent indicator in history ──────────────────── */
+  isOfferSent(offer: any): boolean {
+    return !!offer?.sentAt;
+  }
+
+  /* ── C34: Send Sales Order via email ─────────────────── */
+  showSoEmailDropdown = false;
+  soEmailPresets = ['ak@navbharatgroup.com', 'rs@navbharatgroup.com'];
 }

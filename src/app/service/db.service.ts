@@ -63,7 +63,7 @@ interface DbValidationResult {
 @Injectable({ providedIn: 'root' })
 export class DBService {
   private DB_NAME = 'crm-db';
-  private DB_VERSION = 112;
+  private DB_VERSION = 114;
 
   // ✅ Cache DB connection to prevent race conditions
   private cachedDB: IDBDatabase | null = null;
@@ -106,7 +106,8 @@ export class DBService {
             sales_order_items: { keyPath: 'id', autoIncrement: true },
             purchaseOrders: { keyPath: 'id', autoIncrement: true },
             payments: { keyPath: 'id' },
-            rfqs: { keyPath: 'id', autoIncrement: true }
+            rfqs: { keyPath: 'id', autoIncrement: true },
+            documents: { keyPath: 'id', autoIncrement: true }
           };
 
           // Safely create stores if not exist

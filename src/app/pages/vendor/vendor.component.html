@@ -93,9 +93,7 @@
           <td>
             <div class="contact-info">
               <div class="contact-person">
-                {{ (vendor.primaryContact.firstName || vendor.primaryContact.lastName)
-                   ? ((vendor.primaryContact.firstName || '') + ' ' + (vendor.primaryContact.lastName || '')).trim()
-                   : (vendor.contactPerson || '—') }}
+                {{ formatAddrContactName(vendor.primaryContact) || (vendor.contactPerson || '—') }}
               </div>
               <div class="contact-item">
                 <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
@@ -510,11 +508,18 @@
           <div class="form-group">
             <label class="form-label">Mobile No.</label>
             <div style="display:flex;gap:6px">
-              <select [ngModel]="newVendor.primaryContact.mobileCode ?? '+91'"
-                (ngModelChange)="newVendor.primaryContact.mobileCode=$event"
-                name="vpc_mobileCode" class="form-select" style="width:80px;flex-shrink:0">
-                <option *ngFor="let cc of countryCodes" [value]="cc">{{ cc }}</option>
-              </select>
+              <div class="dial-wrap" (click)="$event.stopPropagation(); toggleDial('vpc')">
+                <img [src]="'assets/flags/' + contactIso(newVendor.primaryContact) + '.svg'" class="dial-flag" />
+                <span class="dial-code">{{ newVendor.primaryContact.mobileCode ?? '+91' }}</span>
+                <span class="dial-caret">▾</span>
+                <div class="dial-list" *ngIf="openDialDropdown === 'vpc'">
+                  <div *ngFor="let cc of countryDialCodes" class="dial-option"
+                    (click)="$event.stopPropagation(); pickDial(newVendor.primaryContact, cc.code, cc.iso)">
+                    <img [src]="'assets/flags/' + cc.iso + '.svg'" class="dial-flag" />
+                    <span>{{ cc.code }} {{ cc.name }}</span>
+                  </div>
+                </div>
+              </div>
               <input type="text" class="form-input" [(ngModel)]="newVendor.primaryContact.mobile" name="vpc_mobile" />
             </div>
           </div>
@@ -656,7 +661,13 @@
     </div>
     <div class="form-group">
       <label class="form-label">GST No.</label>
-      <input type="text" class="form-input" [(ngModel)]="addr.gstin" [name]="prefix+'gstin'" [disabled]="disabled" />
+      <input type="text" class="form-input" [(ngModel)]="addr.gstin" [name]="prefix+'gstin'" [disabled]="disabled"
+        (input)="autoVerifyGST(addr)" placeholder="Auto-verified on entry" maxlength="15"
+        style="text-transform:uppercase;" />
+      <div style="margin-top:4px; font-size:12px; display:flex; gap:8px; flex-wrap:wrap;">
+        <span *ngIf="addr.gstVerified" style="color:#276749; font-weight:600;">✓ GST Verified</span>
+        <span *ngIf="addr.gstInvalidFormat" style="color:#c53030; font-weight:600;">✗ Invalid Format</span>
+      </div>
       <label class="file-upload-btn">
         <input type="file" accept=".pdf,.jpg,.jpeg,.png" (change)="readFileToAddr($event, addr, 'gstFile')"
           [disabled]="disabled" />
@@ -688,36 +699,60 @@
         <button *ngIf="!disabled" type="button" class="doc-remove-btn"
           (click)="removeAddrContact(addr, ci)">✕</button>
       </div>
-      <div class="row-2">
+      <!-- Contact person: Title / First Name / Last Name (matching customers module) -->
+      <div class="row-3">
         <div class="form-group">
-          <label class="form-label">Contact Person</label>
-          <input type="text" class="form-input" [(ngModel)]="cp.contactPerson"
-            [name]="prefix+'cp'+ci" [disabled]="disabled" />
+          <label class="form-label">Title</label>
+          <select class="form-select" [(ngModel)]="cp.title" [name]="prefix+'ctitle'+ci" [disabled]="disabled">
+            <option value="">-</option>
+            <option>Mr</option><option>Mrs</option><option>Ms</option><option>Dr</option>
+          </select>
         </div>
+        <div class="form-group">
+          <label class="form-label">First Name</label>
+          <input type="text" class="form-input" [(ngModel)]="cp.firstName"
+            [name]="prefix+'cfirst'+ci" [disabled]="disabled" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Last Name</label>
+          <input type="text" class="form-input" [(ngModel)]="cp.lastName"
+            [name]="prefix+'clast'+ci" [disabled]="disabled" />
+        </div>
+      </div>
+      <div class="row-2">
         <div class="form-group">
           <label class="form-label">Department</label>
           <input type="text" class="form-input" [(ngModel)]="cp.department"
             [name]="prefix+'dept'+ci" [disabled]="disabled" />
         </div>
-      </div>
-      <div class="row-2">
         <div class="form-group">
           <label class="form-label">Email ID</label>
           <input type="email" class="form-input" [(ngModel)]="cp.email"
             [name]="prefix+'email'+ci" [disabled]="disabled" />
         </div>
+      </div>
+      <div class="row-2">
         <div class="form-group">
           <label class="form-label">Mobile No.</label>
           <div style="display:flex;gap:6px">
-            <select [ngModel]="cp.mobileCode ?? '+91'" (ngModelChange)="cp.mobileCode=$event"
-              [name]="prefix+'mobileCode'+ci" [disabled]="disabled" class="form-select"
-              style="width:80px;flex-shrink:0">
-              <option *ngFor="let cc of countryCodes" [value]="cc">{{ cc }}</option>
-            </select>
+            <div class="dial-wrap" [class.dial-disabled]="disabled"
+              (click)="!disabled && $event.stopPropagation(); !disabled && toggleDial(prefix+'cp'+ci)">
+              <img [src]="'assets/flags/' + contactIso(cp) + '.svg'" class="dial-flag" />
+              <span class="dial-code">{{ cp.mobileCode ?? '+91' }}</span>
+              <span class="dial-caret">▾</span>
+              <div class="dial-list" *ngIf="openDialDropdown === prefix+'cp'+ci">
+                <div *ngFor="let cc of countryDialCodes" class="dial-option"
+                  (click)="$event.stopPropagation(); pickDial(cp, cc.code, cc.iso)">
+                  <img [src]="'assets/flags/' + cc.iso + '.svg'" class="dial-flag" />
+                  <span>{{ cc.code }} {{ cc.name }}</span>
+                </div>
+              </div>
+            </div>
             <input type="text" class="form-input" [(ngModel)]="cp.mobile"
               [name]="prefix+'mobile'+ci" [disabled]="disabled" />
           </div>
         </div>
+        <div></div>
       </div>
     </div>
   </div>

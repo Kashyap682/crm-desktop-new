@@ -980,6 +980,23 @@
   color: #553c9a;
 }
 
+/* Unified status pill badges — all offers use these */
+.status-badge-pill {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  border: 1.5px solid;
+  white-space: nowrap;
+}
+.pill-pending      { background: #f0f4ff; color: #3b5ba5; border-color: #b3c5e8; }
+.pill-received     { background: #f0fff4; color: #276749; border-color: #9ae6b4; }
+.pill-negotiation  { background: #fffaf0; color: #c05621; border-color: #fbd38d; }
+.pill-lost         { background: #fff5f5; color: #c53030; border-color: #feb2b2; }
+.pill-regret       { background: #faf5ff; color: #553c9a; border-color: #d6bcfa; }
+
 /* ===================================
    HISTORY + SO BUTTONS
    =================================== */

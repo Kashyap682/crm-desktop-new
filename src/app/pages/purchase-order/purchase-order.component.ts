@@ -691,8 +691,9 @@ export class PurchaseOrderComponent {
     // GST: check top-level gst, then officeAddress.gstin
     this.vendorGST = v.gst || offAddr.gstin || '';
 
-    // Contact person: primaryContact first/last, then officeAddress.contactPerson, then top-level
-    const pcName = [pc.firstName, pc.lastName].filter(Boolean).join(' ').trim();
+    // Contact person: title + first + last (format: "Ms. Tisya Pawar"), with fallbacks
+    const pcTitle = pc.title ? pc.title.replace(/\.?$/, '.') : '';
+    const pcName = [pcTitle, pc.firstName, pc.lastName].filter(Boolean).join(' ').trim();
     this.contactPerson = pcName || offAddr.contactPerson || v.contactPerson || '';
 
     // Contact info: mobile + email from primaryContact, then officeAddress, then top-level

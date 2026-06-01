@@ -1,4 +1,4 @@
-import { Component } from '@angular/core';
+import { Component, HostListener } from '@angular/core';
 import { read, writeFileXLSX } from 'xlsx';
 import { FormsModule } from '@angular/forms';
 import { CommonModule } from '@angular/common';
@@ -43,10 +43,82 @@ export class CustomersComponent {
     'Jammu and Kashmir', 'Ladakh', 'Lakshadweep', 'Puducherry'
   ];
 
-  countryCodes: string[] = [
-    '+91', '+1', '+44', '+971', '+966', '+65', '+61', '+49', '+86', '+81',
-    '+60', '+62', '+880', '+92', '+94', '+977', '+66', '+84', '+55', '+27'
+  countryDialCodes = [
+    // South Asia
+    { code: '+91',  iso: 'in', name: 'India' },
+    { code: '+880', iso: 'bd', name: 'Bangladesh' },
+    { code: '+975', iso: 'bt', name: 'Bhutan' },
+    { code: '+960', iso: 'mv', name: 'Maldives' },
+    { code: '+95',  iso: 'mm', name: 'Myanmar' },
+    { code: '+977', iso: 'np', name: 'Nepal' },
+    { code: '+92',  iso: 'pk', name: 'Pakistan' },
+    { code: '+94',  iso: 'lk', name: 'Sri Lanka' },
+    { code: '+93',  iso: 'af', name: 'Afghanistan' },
+    // East & South-East Asia
+    { code: '+86',  iso: 'cn', name: 'China' },
+    { code: '+852', iso: 'hk', name: 'Hong Kong' },
+    { code: '+62',  iso: 'id', name: 'Indonesia' },
+    { code: '+81',  iso: 'jp', name: 'Japan' },
+    { code: '+82',  iso: 'kr', name: 'South Korea' },
+    { code: '+60',  iso: 'my', name: 'Malaysia' },
+    { code: '+63',  iso: 'ph', name: 'Philippines' },
+    { code: '+65',  iso: 'sg', name: 'Singapore' },
+    { code: '+66',  iso: 'th', name: 'Thailand' },
+    { code: '+84',  iso: 'vn', name: 'Vietnam' },
+    // Middle East
+    { code: '+973', iso: 'bh', name: 'Bahrain' },
+    { code: '+20',  iso: 'eg', name: 'Egypt' },
+    { code: '+965', iso: 'kw', name: 'Kuwait' },
+    { code: '+968', iso: 'om', name: 'Oman' },
+    { code: '+974', iso: 'qa', name: 'Qatar' },
+    { code: '+966', iso: 'sa', name: 'Saudi Arabia' },
+    { code: '+90',  iso: 'tr', name: 'Turkey' },
+    { code: '+971', iso: 'ae', name: 'UAE' },
+    // Europe
+    { code: '+44',  iso: 'gb', name: 'United Kingdom' },
+    { code: '+49',  iso: 'de', name: 'Germany' },
+    { code: '+33',  iso: 'fr', name: 'France' },
+    { code: '+39',  iso: 'it', name: 'Italy' },
+    { code: '+31',  iso: 'nl', name: 'Netherlands' },
+    { code: '+7',   iso: 'ru', name: 'Russia' },
+    // Oceania
+    { code: '+61',  iso: 'au', name: 'Australia' },
+    { code: '+64',  iso: 'nz', name: 'New Zealand' },
+    // North America
+    { code: '+1',   iso: 'us', name: 'USA' },
+    { code: '+1',   iso: 'ca', name: 'Canada' },
+    { code: '+52',  iso: 'mx', name: 'Mexico' },
+    // South America
+    { code: '+54',  iso: 'ar', name: 'Argentina' },
+    { code: '+55',  iso: 'br', name: 'Brazil' },
+    // Africa
+    { code: '+254', iso: 'ke', name: 'Kenya' },
+    { code: '+234', iso: 'ng', name: 'Nigeria' },
+    { code: '+27',  iso: 'za', name: 'South Africa' },
   ];
+
+  openDialDropdown: string | null = null;
+
+  getIso(code: string): string {
+    return this.countryDialCodes.find(c => c.code === code)?.iso || 'in';
+  }
+
+  @HostListener('document:click')
+  closeAllDials(): void { this.openDialDropdown = null; }
+
+  toggleDial(key: string): void {
+    this.openDialDropdown = this.openDialDropdown === key ? null : key;
+  }
+
+  pickDial(contact: any, code: string, iso: string): void {
+    contact.mobileCode = code;
+    contact.mobileCodeIso = iso;
+    this.openDialDropdown = null;
+  }
+
+  contactIso(contact: any): string {
+    return contact?.mobileCodeIso || this.getIso(contact?.mobileCode ?? '+91');
+  }
 
   countries: string[] = [
     'India',
@@ -58,6 +130,24 @@ export class CustomersComponent {
     'South Africa', 'South Korea', 'Sri Lanka', 'Switzerland', 'Thailand',
     'United Arab Emirates', 'United Kingdom', 'United States of America'
   ];
+
+  /** Auto-verify GST as the user types — validates format in real time */
+  autoVerifyGST(addr: any): void {
+    const gstin = (addr.gstin || '').trim().toUpperCase();
+    addr.gstin = gstin; // normalise to uppercase while typing
+    const gstRegex = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
+    if (gstin.length === 0) {
+      addr.gstVerified = false;
+      addr.gstInvalidFormat = false;
+    } else if (gstin.length >= 15) {
+      addr.gstVerified = gstRegex.test(gstin);
+      addr.gstInvalidFormat = !gstRegex.test(gstin);
+    } else {
+      // Still typing — don't flag as invalid yet
+      addr.gstVerified = false;
+      addr.gstInvalidFormat = false;
+    }
+  }
 
   async lookupPincode(addr: any, pincode: string): Promise<void> {
     if (!pincode || pincode.length !== 6) return;
@@ -115,7 +205,14 @@ export class CustomersComponent {
 
   /* ─── Empty address contact ─── */
   private emptyAddrContact() {
-    return { contactPerson: '', department: '', email: '', mobile: '', mobileCode: '+91' };
+    return { contactPerson: '', title: '', firstName: '', lastName: '', department: '', email: '', mobile: '', mobileCode: '+91' };
+  }
+
+  /** Display name for an address contact — uses title/first/last if set, falls back to legacy contactPerson */
+  formatAddrContactName(cp: any): string {
+    if (!cp) return '';
+    const name = [cp.title, cp.firstName, cp.lastName].filter(Boolean).join(' ').trim();
+    return name || cp.contactPerson || '';
   }
 
   addAddrContact(addr: any) {
@@ -341,8 +438,19 @@ export class CustomersComponent {
   private normalizeAddr(addr: any) {
     if (!addr) return this.emptyAddr();
     const contacts = Array.isArray(addr.contacts) && addr.contacts.length
-      ? addr.contacts
-      : [{ contactPerson: addr.contactPerson || '', department: addr.department || '',
+      ? addr.contacts.map((cp: any) => ({
+          contactPerson: cp.contactPerson || '',
+          title: cp.title || '',
+          firstName: cp.firstName || '',
+          lastName: cp.lastName || '',
+          department: cp.department || '',
+          email: cp.email || '',
+          mobile: cp.mobile || '',
+          mobileCode: cp.mobileCode || '+91',
+          mobileCodeIso: cp.mobileCodeIso || undefined
+        }))
+      : [{ contactPerson: addr.contactPerson || '', title: '', firstName: '', lastName: '',
+           department: addr.department || '',
            email: addr.email || '', mobile: addr.mobile || '',
            mobileCode: addr.mobileCode || '+91' }];
     return {
@@ -581,7 +689,7 @@ export class CustomersComponent {
         [`${prefix} Pincode`]: a?.pincode || '',
         [`${prefix} Country`]: a?.country || '',
         [`${prefix} GSTIN`]: a?.gstin || '',
-        [`${prefix} Contact`]: cp?.contactPerson || a?.contactPerson || '',
+        [`${prefix} Contact`]: this.formatAddrContactName(cp) || a?.contactPerson || '',
         [`${prefix} Department`]: cp?.department || a?.department || '',
         [`${prefix} Email`]: cp?.email || a?.email || '',
         [`${prefix} Mobile`]: cp?.mobile || a?.mobile || '',
@@ -691,26 +799,18 @@ export class CustomersComponent {
 
   formatContactName(contact: any): string {
     if (!contact) return '-';
-    return [contact.title, contact.firstName, contact.lastName].filter(Boolean).join(' ').trim() || '-';
+    const title = contact.title ? contact.title.replace(/\.?$/, '.') : '';  // ensure "Ms."
+    return [title, contact.firstName, contact.lastName].filter(Boolean).join(' ').trim() || '-';
   }
 
   /* ─── PDF export ─── */
   downloadCustomerPDF(c: any) {
     const doc = new jsPDF('p', 'mm', 'a4');
     const pW = doc.internal.pageSize.getWidth();
-    const pH = doc.internal.pageSize.getHeight();
     const L = 14;
     let y = 15;
 
-    const checkPage = (needed = 12) => {
-      if (y + needed > pH - 15) {
-        doc.addPage();
-        y = 15;
-      }
-    };
-
     const section = (title: string) => {
-      checkPage(16);
       y += 4;
       doc.setFillColor(0, 31, 63);
       doc.rect(L, y, pW - L * 2, 7, 'F');
@@ -724,11 +824,10 @@ export class CustomersComponent {
 
     const row = (label: string, value: string, x2 = 80) => {
       doc.setFontSize(9);
-      const lines = doc.splitTextToSize(value || '-', pW - x2 - L);
-      checkPage(lines.length * 5 + 2);
       doc.setFont('helvetica', 'bold');
       doc.text(label, L, y);
       doc.setFont('helvetica', 'normal');
+      const lines = doc.splitTextToSize(value || '-', pW - x2 - L);
       doc.text(lines, x2, y);
       y += lines.length * 5 + 1;
     };
@@ -745,7 +844,7 @@ export class CustomersComponent {
         : (addr?.contactPerson ? [{ contactPerson: addr.contactPerson, department: addr.department, mobile: addr.mobile, mobileCode: addr.mobileCode, email: addr.email }] : []);
       contacts.forEach((cp: any, ci: number) => {
         const label = contacts.length > 1 ? `Contact ${ci + 1}:` : 'Contact:';
-        const name = [cp.title, cp.contactPerson].filter(Boolean).join(' ') || '';
+        const name = this.formatAddrContactName(cp);
         if (name) row(label, name + (cp.department ? `  (${cp.department})` : ''));
         if (cp.mobile) row('  Mobile:', (cp.mobileCode || '+91') + ' ' + cp.mobile);
         if (cp.email) row('  Email:', cp.email);
@@ -767,7 +866,6 @@ export class CustomersComponent {
     row('Company Name:', c.companyName || '-');
     row('Customer ID:', c.customerId || '-');
     row('Customer Type:', c.customerType || '-');
-    if (c.businessVertical) row('Business Vertical:', c.businessVertical);
     row('Email:', c.email || '-');
     row('Website:', c.website || '-');
 

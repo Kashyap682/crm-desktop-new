@@ -456,6 +456,13 @@
             <td><span class="amount">₹{{ p.total | number:'1.2-2' }}</span></td>
 
             <td class="actions-column-table">
+              <button class="btn-table btn-edit" (click)="openPreview(p)" title="Preview">
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  <path d="M.583 7S2.917 2.333 7 2.333 13.417 7 13.417 7 11.083 11.667 7 11.667.583 7 .583 7z" stroke="currentColor" stroke-width="1.5"/>
+                  <circle cx="7" cy="7" r="1.75" stroke="currentColor" stroke-width="1.5"/>
+                </svg>
+                View
+              </button>
               <button class="btn-table btn-edit" (click)="edit(p)">
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
                   <path d="M10 2a1.886 1.886 0 012.667 2.667L4 13.333.667 14 2 10.667 10.667 2z" stroke="currentColor"
@@ -470,6 +477,12 @@
                     stroke="currentColor" stroke-width="1.5" />
                 </svg>
                 Download
+              </button>
+              <button class="btn-table" style="color:#6b7280;" (click)="createReminderForPI(p)" title="Set Reminder">
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  <path d="M7 1.167A5.833 5.833 0 107 12.833 5.833 5.833 0 007 1.167zM7 4.083V7l2.333 1.167" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+                Reminder
               </button>
               <button class="btn-table btn-delete" (click)="deleteProforma(p)">
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
@@ -486,4 +499,99 @@
     </div>
   </div>
 
+</div>
+
+<!-- C39: REMINDER + EMAIL MODAL -->
+<div *ngIf="showReminderModal" class="inq-modal-overlay" style="z-index:1000;" (click)="closeReminderModal()">
+  <div class="inq-modal" style="max-width:420px;" (click)="$event.stopPropagation()">
+    <div class="inq-modal-header">
+      <div class="inq-title">
+        <span class="inq-icon">🔔</span>
+        <h3>Reminder Created</h3>
+      </div>
+      <button class="inq-close" (click)="closeReminderModal()">×</button>
+    </div>
+    <div style="padding:20px;">
+      <p style="font-size:13px; color:#2d3748; margin:0 0 16px;">
+        Reminder set for <strong>{{ reminderPI?.proformaNumber }}</strong>.
+        Would you also like to send this PI to the customer by email?
+      </p>
+      <div style="background:#f7faff; border:1px solid #e2e8f0; border-radius:8px; padding:10px 14px; margin-bottom:16px;">
+        <label style="font-size:11px; color:#718096; display:block; margin-bottom:4px; font-weight:600; text-transform:uppercase; letter-spacing:0.04em;">Contact Email</label>
+        <input type="email" style="width:100%; padding:6px 10px; border:1px solid #e2e8f0; border-radius:6px; font-size:13px; box-sizing:border-box;"
+          [(ngModel)]="reminderEmail" placeholder="Enter email if not auto-filled" />
+        <div *ngIf="!reminderEmail" style="font-size:11px; color:#e9a800; margin-top:4px;">
+          ⚠ No email found in customer database — enter manually above.
+        </div>
+      </div>
+      <div style="display:flex; gap:10px; justify-content:flex-end;">
+        <button class="btn btn-secondary" style="padding:7px 16px; font-size:13px;" (click)="closeReminderModal()">
+          Skip Email
+        </button>
+        <button class="btn btn-primary" style="padding:7px 16px; font-size:13px;" (click)="sendPIEmail()">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" style="margin-right:4px;">
+            <path d="M2 3l6 5 6-5M2 3h12v10H2V3z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          Send PI via Email
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- C40: PREVIEW PROFORMA MODAL -->
+<div *ngIf="showPreviewModal" class="inq-modal-overlay" style="z-index:1000;" (click)="closePreview()">
+  <div class="inq-modal" style="max-width:700px; max-height:85vh; overflow-y:auto;" (click)="$event.stopPropagation()">
+    <div class="inq-modal-header">
+      <div class="inq-title">
+        <span class="inq-icon">📄</span>
+        <h3>{{ previewProforma?.proformaNumber }}</h3>
+      </div>
+      <button class="inq-close" (click)="closePreview()">×</button>
+    </div>
+    <div style="padding:16px;" *ngIf="previewProforma">
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px; font-size:13px;">
+        <div><strong>Buyer:</strong> {{ previewProforma.buyerName }}</div>
+        <div><strong>Date:</strong> {{ previewProforma.date | date:'dd/MM/yyyy' }}</div>
+        <div><strong>GST No:</strong> {{ previewProforma.buyerGST || '—' }}</div>
+        <div><strong>PO Ref:</strong> {{ previewProforma.refNo || '—' }}</div>
+        <div><strong>Payment Terms:</strong> {{ previewProforma.paymentTerms || '—' }}</div>
+        <div><strong>Total:</strong> ₹{{ previewProforma.total | number:'1.2-2' }}</div>
+      </div>
+      <table style="width:100%; border-collapse:collapse; font-size:12px; margin-bottom:12px;">
+        <thead style="background:#eef2fa;">
+          <tr>
+            <th style="padding:6px 8px; border:1px solid #d1dae9;">#</th>
+            <th style="padding:6px 8px; border:1px solid #d1dae9;">Description</th>
+            <th style="padding:6px 8px; border:1px solid #d1dae9;">HSN</th>
+            <th style="padding:6px 8px; border:1px solid #d1dae9;">Qty</th>
+            <th style="padding:6px 8px; border:1px solid #d1dae9;">UOM</th>
+            <th style="padding:6px 8px; border:1px solid #d1dae9;">Rate</th>
+            <th style="padding:6px 8px; border:1px solid #d1dae9;">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let it of previewProforma.items; let i = index">
+            <td style="padding:5px 8px; border:1px solid #e2e8f0; text-align:center;">{{ i+1 }}</td>
+            <td style="padding:5px 8px; border:1px solid #e2e8f0;">{{ it.description }}</td>
+            <td style="padding:5px 8px; border:1px solid #e2e8f0;">{{ it.hsn }}</td>
+            <td style="padding:5px 8px; border:1px solid #e2e8f0; text-align:center;">{{ it.qty }}</td>
+            <td style="padding:5px 8px; border:1px solid #e2e8f0; text-align:center;">{{ it.uom }}</td>
+            <td style="padding:5px 8px; border:1px solid #e2e8f0; text-align:right;">₹{{ it.rate }}</td>
+            <td style="padding:5px 8px; border:1px solid #e2e8f0; text-align:right;">₹{{ ((+it.qty||0)*(+it.rate||0)) | number:'1.2-2' }}</td>
+          </tr>
+        </tbody>
+      </table>
+      <div style="text-align:right; font-size:13px;">
+        <div>Sub Total: <strong>₹{{ previewProforma.subTotal | number:'1.2-2' }}</strong></div>
+        <div *ngIf="previewProforma.gstType !== 'igst'">CGST 9%: ₹{{ previewProforma.cgst | number:'1.2-2' }} | SGST 9%: ₹{{ previewProforma.sgst | number:'1.2-2' }}</div>
+        <div *ngIf="previewProforma.gstType === 'igst'">IGST 18%: ₹{{ previewProforma.igst | number:'1.2-2' }}</div>
+        <div style="font-size:14px; font-weight:700; margin-top:6px;">Total: ₹{{ previewProforma.total | number:'1.2-2' }}</div>
+      </div>
+      <div style="margin-top:12px; display:flex; gap:10px; justify-content:flex-end;">
+        <button class="btn btn-secondary" (click)="closePreview()">Close</button>
+        <button class="btn btn-primary" (click)="downloadPDF(previewProforma); closePreview()">Download PDF</button>
+      </div>
+    </div>
+  </div>
 </div>

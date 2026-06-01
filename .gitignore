@@ -40,3 +40,4 @@ coverage/
 
 # ── Electron builder cache ────────────────────
 .cache/
+.claude

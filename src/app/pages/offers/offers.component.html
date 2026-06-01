@@ -56,7 +56,7 @@
               <option value="Under Negotiation">Under Negotiation</option>
               <option value="Order Received">Order Received</option>
               <option value="Order Lost">Order Lost</option>
-              <option value="Rejected">Rejected</option>
+              <option value="Rejected">Regret</option>
             </select>
           </td>
           <td>
@@ -69,30 +69,27 @@
     </table>
   </div>
 
-  <!-- Table Container -->
-  <div class="table-container" *ngIf="selectedStatus !== 'pending'">
+  <!-- Table Container (offers) — visible on all tabs -->
+  <div class="table-container" *ngIf="filteredOffers.length > 0 || !selectedStatus">
     <table class="data-table">
       <thead>
         <tr>
-          <th>Offer ID</th>
           <th>Offer Reference</th>
           <th>Customer</th>
           <th>Date</th>
           <th>Amount</th>
-          <th>Status</th>
+          <th *ngIf="!isTerminalStatus(selectedStatus)">Status</th>
           <th class="actions-column">Actions</th>
         </tr>
       </thead>
       <tbody>
-        <tr *ngFor="let o of filteredOffers" class="table-row">
-          <td>
-            <span class="offer-id">{{ o.id }}</span>
-          </td>
+        <ng-container *ngFor="let o of filteredOffers">
+        <tr class="table-row">
           <td>
             <span class="offer-ref">{{ o.offerRef || ('NIEC/MDD/' + (o.id || '')) }}</span>
           </td>
           <td>
-            <div class="customer-name">{{ o.customerName }}</div>
+            <div class="customer-name">{{ o.customerSnapshot?.companyName || o.customerName }}</div>
           </td>
           <td>
             <div class="date-cell">
@@ -101,29 +98,42 @@
                   d="M12.667 2.667H3.333c-.733 0-1.333.6-1.333 1.333v9.333c0 .734.6 1.334 1.333 1.334h9.334c.733 0 1.333-.6 1.333-1.334V4c0-.733-.6-1.333-1.333-1.333zM2 6h12"
                   stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
               </svg>
-              {{ formatDisplayDate(o.date) }}
+              {{ o.sentAt ? formatDisplayDate(o.date) : 'PENDING' }}
             </div>
           </td>
           <td>
             <span class="amount">₹{{ o.grandTotal | number:'1.2-2' }}</span>
           </td>
-          <td>
-            <select class="status-select"
-              [ngModel]="o.offerStatus || ''"
-              (ngModelChange)="updateOfferStatus(o, $event)"
-              [class.status-order-received]="o.offerStatus === 'order_received'"
-              [class.status-order-lost]="o.offerStatus === 'order_lost'"
-              [class.status-negotiation]="o.offerStatus === 'under_negotiation'"
-              [class.status-rejected]="o.offerStatus === 'rejected'">
-              <option value="">-- Set Status --</option>
-              <option value="under_negotiation">Under Negotiation</option>
-              <option value="order_received">Order Received</option>
-              <option value="order_lost">Order Lost</option>
-              <option value="rejected">Rejected</option>
-            </select>
+          <td *ngIf="!isTerminalStatus(selectedStatus)">
+            <span class="status-badge-pill"
+              [class.pill-pending]="!o.offerStatus || o.offerStatus === 'pending'"
+              [class.pill-received]="o.offerStatus === 'order_received'"
+              [class.pill-negotiation]="o.offerStatus === 'under_negotiation'"
+              [class.pill-lost]="o.offerStatus === 'order_lost'"
+              [class.pill-regret]="o.offerStatus === 'rejected'">
+              {{ !o.offerStatus || o.offerStatus === 'pending' ? 'Pending'
+                 : o.offerStatus === 'order_received' ? 'Order Received'
+                 : o.offerStatus === 'under_negotiation' ? 'Under Negotiation'
+                 : o.offerStatus === 'order_lost' ? 'Order Lost'
+                 : o.offerStatus === 'rejected' ? 'Regret' : 'Pending' }}
+            </span>
           </td>
           <td class="actions-column">
             <div class="action-buttons">
+              <button *ngIf="o.offerStatus && o.offerStatus !== 'pending'" class="btn-icon"
+                [style.color]="expandedOfferId === o.id ? '#4a6fa5' : '#94a3b8'"
+                (click)="toggleExpand(o.id)" [title]="expandedOfferId === o.id ? 'Collapse' : 'Details'">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+                    [attr.transform]="expandedOfferId === o.id ? 'rotate(180 8 8)' : null"/>
+                </svg>
+              </button>
+              <button class="btn-icon btn-email" (click)="openEmailModal(o)" title="Send via Email">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <path d="M14.667 3.333H1.333C.6 3.333 0 3.933 0 4.667v6.666C0 12.067.6 12.667 1.333 12.667h13.334C15.4 12.667 16 12.067 16 11.333V4.667C16 3.933 15.4 3.333 14.667 3.333zM14.667 4.667L8 8.667 1.333 4.667"
+                    stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+              </button>
               <button class="btn-icon btn-view" (click)="viewOffer(o)" title="View Offer">
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                   <path d="M.667 8S3.333 2.667 8 2.667 15.333 8 15.333 8 12.667 13.333 8 13.333.667 8 .667 8z"
@@ -137,7 +147,7 @@
                   <path d="M8 4.667V8l2.667 1.333" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>
               </button>
-              <button class="btn-icon btn-edit" (click)="editOffer(o)" title="Edit / Revise Offer">
+              <button *ngIf="o.offerStatus !== 'order_received'" class="btn-icon btn-edit" (click)="editOffer(o)" title="Edit / Revise Offer">
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                   <path d="M11.333 2A1.886 1.886 0 0114 4.667l-9 9-3.667 1 1-3.667 9-9z" stroke="currentColor"
                     stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
@@ -150,7 +160,7 @@
                     stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
                 </svg>
               </button>
-              <button class="btn-icon btn-delete" (click)="deleteOffer(o.id)" title="Delete">
+              <button *ngIf="o.offerStatus !== 'order_received'" class="btn-icon btn-delete" (click)="deleteOffer(o.id)" title="Delete">
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                   <path
                     d="M2 4h12M5.333 4V2.667a1.333 1.333 0 011.334-1.334h2.666a1.333 1.333 0 011.334 1.334V4m2 0v9.333a1.333 1.333 0 01-1.334 1.334H4.667a1.333 1.333 0 01-1.334-1.334V4h9.334z"
@@ -161,8 +171,206 @@
           </td>
         </tr>
 
+        <!-- Expandable detail row -->
+        <tr *ngIf="expandedOfferId === o.id" class="expanded-row">
+          <td [attr.colspan]="isTerminalStatus(selectedStatus) ? 5 : 6" style="padding: 0; background: #f8faff;">
+            <div style="padding: 16px 24px; border-top: 2px solid #e2e8f0;">
+
+              <!-- C28: Under Negotiation — Follow-up table -->
+              <ng-container *ngIf="o.offerStatus === 'under_negotiation'">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                  <strong style="font-size:13px; color:#2d3748;">Follow-up History</strong>
+                  <button class="btn btn-primary" style="padding:4px 12px; font-size:12px;" (click)="addFollowUp(o)">+ Add Follow-up</button>
+                </div>
+                <table style="width:100%; border-collapse:collapse; font-size:12px;" *ngIf="o.followUps?.length">
+                  <thead style="background:#eef2fa;">
+                    <tr>
+                      <th style="padding:6px 8px; border:1px solid #d1dae9;">Date</th>
+                      <th style="padding:6px 8px; border:1px solid #d1dae9;">Mode</th>
+                      <th style="padding:6px 8px; border:1px solid #d1dae9;">Contact Person</th>
+                      <th style="padding:6px 8px; border:1px solid #d1dae9;">Contact Number</th>
+                      <th style="padding:6px 8px; border:1px solid #d1dae9;">Remarks</th>
+                      <th style="padding:6px 8px; border:1px solid #d1dae9;">Next Follow-up Date</th>
+                      <th style="padding:6px 8px; border:1px solid #d1dae9;"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr *ngFor="let fu of o.followUps; let fi = index">
+                      <td style="padding:4px 6px; border:1px solid #e2e8f0;"><input type="date" class="form-input" style="font-size:12px; padding:2px 6px;" [(ngModel)]="fu.date" [name]="'fuDate'+o.id+fi"></td>
+                      <td style="padding:4px 6px; border:1px solid #e2e8f0;"><select class="form-select" style="font-size:12px; padding:2px 6px;" [(ngModel)]="fu.mode" [name]="'fuMode'+o.id+fi"><option value="">--</option><option>Call</option><option>Email</option><option>Meeting</option><option>WhatsApp</option></select></td>
+                      <td style="padding:4px 6px; border:1px solid #e2e8f0;"><input type="text" class="form-input" style="font-size:12px; padding:2px 6px;" [(ngModel)]="fu.contactPersonName" [name]="'fuCPN'+o.id+fi"></td>
+                      <td style="padding:4px 6px; border:1px solid #e2e8f0;"><input type="text" class="form-input" style="font-size:12px; padding:2px 6px;" [(ngModel)]="fu.contactPersonNumber" [name]="'fuCPNum'+o.id+fi"></td>
+                      <td style="padding:4px 6px; border:1px solid #e2e8f0;"><input type="text" class="form-input" style="font-size:12px; padding:2px 6px;" [(ngModel)]="fu.remarks" [name]="'fuRem'+o.id+fi"></td>
+                      <td style="padding:4px 6px; border:1px solid #e2e8f0;"><input type="date" class="form-input" style="font-size:12px; padding:2px 6px;" [(ngModel)]="fu.nextFollowUpDate" [name]="'fuNext'+o.id+fi"></td>
+                      <td style="padding:4px 6px; border:1px solid #e2e8f0; text-align:center;"><button style="color:#e53e3e; background:none; border:none; cursor:pointer; font-size:14px;" (click)="removeFollowUp(o, fi)">✕</button></td>
+                    </tr>
+                  </tbody>
+                </table>
+                <p *ngIf="!o.followUps?.length" style="font-size:12px; color:#94a3b8; margin:8px 0;">No follow-ups yet. Click "Add Follow-up" to record one.</p>
+                <button *ngIf="o.followUps?.length" class="btn btn-secondary" style="margin-top:10px; padding:4px 12px; font-size:12px;" (click)="saveFollowUps(o)">Save Follow-ups</button>
+              </ng-container>
+
+              <!-- C29/C30: Order Received — checkboxes + PI + payment -->
+              <ng-container *ngIf="o.offerStatus === 'order_received'">
+                <div style="display:flex; gap:32px; flex-wrap:wrap; margin-bottom:12px;">
+                  <label style="display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer;">
+                    <input type="checkbox" [checked]="o.commerciallyClear" (change)="updateOfferField(o, 'commerciallyClear', $any($event.target).checked)" />
+                    Commercially Clear
+                  </label>
+                  <div style="display:flex; flex-direction:column; gap:4px;">
+                    <label style="display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer;">
+                      <input type="checkbox" [checked]="o.acknowledgementSent" (change)="updateOfferField(o, 'acknowledgementSent', $any($event.target).checked)" />
+                      Acknowledgement Sent
+                    </label>
+                    <button *ngIf="o.acknowledgementSent"
+                      class="btn btn-secondary" style="padding:3px 10px; font-size:11px; margin-left:24px; display:inline-flex; align-items:center; gap:4px;"
+                      (click)="sendAcknowledgement(o)" title="Send acknowledgement email to customer">
+                      <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M2 3l6 5 6-5M2 3h12v10H2V3z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                      Send to Customer
+                    </button>
+                  </div>
+                  <div style="display:flex; flex-direction:column; gap:4px;">
+                    <label style="display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer;">
+                      <input type="checkbox" [checked]="o.poCopyAdded" (change)="updateOfferField(o, 'poCopyAdded', $any($event.target).checked)" />
+                      PO Copy / Confirmation Email
+                    </label>
+                    <div *ngIf="o.poCopyAdded" style="margin-left:24px; display:flex; flex-direction:column; gap:4px;">
+                      <label class="btn btn-secondary" style="cursor:pointer; padding:3px 10px; font-size:11px; display:inline-flex; align-items:center; gap:4px;">
+                        <input type="file" style="display:none" (change)="addPoCopyAttachment(o, $event)" />
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 1v7M3 4l3-3 3 3M1 9h10" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+                        Attach PO Copy
+                      </label>
+                      <div *ngFor="let att of o.poCopyAttachments; let ai = index"
+                        style="display:flex; align-items:center; gap:6px; font-size:11px; color:#4a5568; background:#f7faff; padding:3px 8px; border-radius:4px; border:1px solid #e2e8f0;">
+                        <svg width="10" height="10" viewBox="0 0 12 12" fill="none"><path d="M2 1h6l3 3v7a1 1 0 01-1 1H2a1 1 0 01-1-1V2a1 1 0 011-1z" stroke="#4a6fa5" stroke-width="1.2"/></svg>
+                        <a [href]="att.data" [download]="att.name" style="color:#4a6fa5; text-decoration:underline; flex:1;">{{ att.name }}</a>
+                        <button (click)="removePoCopyAttachment(o, ai)" style="background:none; border:none; cursor:pointer; color:#e53e3e; font-size:12px; padding:0;">✕</button>
+                      </div>
+                    </div>
+                  </div>
+                  <!-- Doc: Authorize only after PI has been sent/linked -->
+                  <label style="display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer;"
+                    [title]="!getLinkedPIs(o.id).length ? 'Generate and send a Proforma Invoice first' : ''">
+                    <input type="checkbox" [checked]="o.authorized"
+                      [disabled]="!getLinkedPIs(o.id).length"
+                      (change)="updateOfferField(o, 'authorized', $any($event.target).checked)" />
+                    <span [style.color]="!getLinkedPIs(o.id).length ? '#94a3b8' : null">
+                      Authorized / Approved
+                      <span *ngIf="!getLinkedPIs(o.id).length" style="font-size:10px; color:#94a3b8; display:block;">
+                        (Generate PI first)
+                      </span>
+                    </span>
+                  </label>
+                </div>
+                <div *ngIf="o.commerciallyClear" style="margin-bottom:12px;">
+                  <div style="display:flex; gap:12px; align-items:center; margin-bottom:8px;">
+                    <strong style="font-size:13px; color:#2d3748;">Payment Details</strong>
+                    <button class="btn btn-primary" style="padding:3px 10px; font-size:12px;" (click)="addPaymentDetail(o)">+ Add</button>
+                  </div>
+                  <table *ngIf="o.paymentDetails?.length" style="width:100%; border-collapse:collapse; font-size:12px; margin-bottom:8px;">
+                    <thead style="background:#eef2fa;">
+                      <tr>
+                        <th style="padding:6px 8px; border:1px solid #d1dae9;">Mode</th>
+                        <th style="padding:6px 8px; border:1px solid #d1dae9;">Amount (₹)</th>
+                        <th style="padding:6px 8px; border:1px solid #d1dae9;">Date</th>
+                        <th style="padding:6px 8px; border:1px solid #d1dae9;"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr *ngFor="let pd of o.paymentDetails; let pi = index">
+                        <td style="padding:4px 6px; border:1px solid #e2e8f0;"><select class="form-select" style="font-size:12px; padding:2px 6px;" [(ngModel)]="pd.mode" [name]="'pdMode'+o.id+pi"><option>Online</option><option>Cheque</option><option>NEFT</option><option>RTGS</option></select></td>
+                        <td style="padding:4px 6px; border:1px solid #e2e8f0;"><input type="number" class="form-input" style="font-size:12px; padding:2px 6px;" [(ngModel)]="pd.amount" [name]="'pdAmt'+o.id+pi" min="0"></td>
+                        <td style="padding:4px 6px; border:1px solid #e2e8f0;"><input type="date" class="form-input" style="font-size:12px; padding:2px 6px;" [(ngModel)]="pd.date" [name]="'pdDate'+o.id+pi"></td>
+                        <td style="padding:4px 6px; border:1px solid #e2e8f0; text-align:center;"><button style="color:#e53e3e; background:none; border:none; cursor:pointer; font-size:14px;" (click)="removePaymentDetail(o, pi)">✕</button></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                  <div style="display:flex; gap:10px;">
+                    <button class="btn btn-secondary" style="padding:4px 12px; font-size:12px;" (click)="savePaymentDetails(o)">Save</button>
+                    <button class="btn btn-primary" style="padding:4px 12px; font-size:12px;" (click)="generatePIFromOffer(o)">Generate Proforma Invoice</button>
+                  </div>
+                </div>
+
+                <!-- C35: Linked Proforma Invoices -->
+                <div style="margin-top:14px;" *ngIf="getLinkedPIs(o.id).length">
+                  <strong style="font-size:13px; color:#2d3748; display:block; margin-bottom:8px;">Linked Proforma Invoices</strong>
+                  <table style="width:100%; border-collapse:collapse; font-size:12px;">
+                    <thead style="background:#eef2fa;">
+                      <tr>
+                        <th style="padding:6px 8px; border:1px solid #d1dae9; text-align:left;">PI No.</th>
+                        <th style="padding:6px 8px; border:1px solid #d1dae9; text-align:left;">Date</th>
+                        <th style="padding:6px 8px; border:1px solid #d1dae9; text-align:left;">Company</th>
+                        <th style="padding:6px 8px; border:1px solid #d1dae9; text-align:right;">Amount (₹)</th>
+                        <th style="padding:6px 8px; border:1px solid #d1dae9; text-align:left;">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr *ngFor="let pi of getLinkedPIs(o.id)">
+                        <td style="padding:5px 8px; border:1px solid #e2e8f0; font-weight:600; color:#4a6fa5;">{{ pi.piNumber || ('PI-' + pi.id) }}</td>
+                        <td style="padding:5px 8px; border:1px solid #e2e8f0;">{{ pi.date || '—' }}</td>
+                        <td style="padding:5px 8px; border:1px solid #e2e8f0;">{{ pi.companyName || '—' }}</td>
+                        <td style="padding:5px 8px; border:1px solid #e2e8f0; text-align:right;">₹{{ (pi.grandTotal || 0) | number:'1.2-2' }}</td>
+                        <td style="padding:5px 8px; border:1px solid #e2e8f0;">
+                          <span [style.color]="pi.status === 'approved' ? '#38a169' : '#e9a800'" style="font-weight:600;">
+                            {{ pi.status || 'Draft' }}
+                          </span>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <div style="margin-top:10px;" *ngIf="!getLinkedPIs(o.id).length">
+                  <span style="font-size:12px; color:#94a3b8;">No proforma invoices linked yet. Use "Generate Proforma Invoice" above to create one.</span>
+                </div>
+              </ng-container>
+
+              <!-- C36: Order Lost — reasons table -->
+              <ng-container *ngIf="o.offerStatus === 'order_lost'">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                  <strong style="font-size:13px; color:#2d3748;">Lost Reasons</strong>
+                  <button class="btn btn-primary" style="padding:4px 12px; font-size:12px;" (click)="addLostDetail(o)">+ Add Reason</button>
+                </div>
+                <table *ngIf="o.lostDetails?.length" style="width:100%; border-collapse:collapse; font-size:12px; margin-bottom:8px;">
+                  <thead style="background:#eef2fa;">
+                    <tr>
+                      <th style="padding:6px 8px; border:1px solid #d1dae9;">Date</th>
+                      <th style="padding:6px 8px; border:1px solid #d1dae9;">Reason</th>
+                      <th style="padding:6px 8px; border:1px solid #d1dae9;">Price Finalized</th>
+                      <th style="padding:6px 8px; border:1px solid #d1dae9;">Competitor</th>
+                      <th style="padding:6px 8px; border:1px solid #d1dae9;"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr *ngFor="let ld of o.lostDetails; let li = index">
+                      <td style="padding:4px 6px; border:1px solid #e2e8f0;"><input type="date" class="form-input" style="font-size:12px; padding:2px 6px;" [(ngModel)]="ld.date" [name]="'ldDate'+o.id+li"></td>
+                      <td style="padding:4px 6px; border:1px solid #e2e8f0;"><input type="text" class="form-input" style="font-size:12px; padding:2px 6px;" [(ngModel)]="ld.reason" [name]="'ldReason'+o.id+li"></td>
+                      <td style="padding:4px 6px; border:1px solid #e2e8f0;"><input type="text" class="form-input" style="font-size:12px; padding:2px 6px;" [(ngModel)]="ld.price" [name]="'ldPrice'+o.id+li"></td>
+                      <td style="padding:4px 6px; border:1px solid #e2e8f0;"><input type="text" class="form-input" style="font-size:12px; padding:2px 6px;" [(ngModel)]="ld.competitor" [name]="'ldComp'+o.id+li"></td>
+                      <td style="padding:4px 6px; border:1px solid #e2e8f0; text-align:center;"><button style="color:#e53e3e; background:none; border:none; cursor:pointer; font-size:14px;" (click)="removeLostDetail(o, li)">✕</button></td>
+                    </tr>
+                  </tbody>
+                </table>
+                <p *ngIf="!o.lostDetails?.length" style="font-size:12px; color:#94a3b8; margin:8px 0;">No reasons recorded yet.</p>
+                <button *ngIf="o.lostDetails?.length" class="btn btn-secondary" style="padding:4px 12px; font-size:12px;" (click)="saveLostDetails(o)">Save</button>
+              </ng-container>
+
+              <!-- C37: Regret — remarks -->
+              <ng-container *ngIf="o.offerStatus === 'rejected'">
+                <div>
+                  <label style="font-size:13px; font-weight:600; color:#2d3748; display:block; margin-bottom:6px;">Regret Remarks</label>
+                  <textarea class="form-textarea" rows="3" [(ngModel)]="o.regretRemarks" [name]="'regretRem'+o.id"
+                    placeholder="Enter reason for regret / rejection..." style="width:100%; font-size:13px;"></textarea>
+                  <button class="btn btn-secondary" style="margin-top:8px; padding:4px 12px; font-size:12px;" (click)="saveRegretRemarks(o)">Save Remarks</button>
+                </div>
+              </ng-container>
+
+            </div>
+          </td>
+        </tr>
+        </ng-container>
+
         <tr *ngIf="!filteredOffers || filteredOffers.length === 0">
-          <td colspan="7" class="empty-state">
+          <td colspan="6" class="empty-state">
             <div class="empty-state-content">
               <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
                 <path d="M40 18H8a2 2 0 00-2 2v20a2 2 0 002 2h32a2 2 0 002-2V20a2 2 0 00-2-2zM32 18V12a8 8 0 10-16 0v6"
@@ -174,6 +382,49 @@
         </tr>
       </tbody>
     </table>
+  </div>
+</div>
+
+<!-- C21: SEND OFFER EMAIL MODAL -->
+<div *ngIf="showEmailModal" class="modal-overlay" (click)="closeEmailModal()">
+  <div class="modal-content" style="max-width:520px;" (click)="$event.stopPropagation()">
+    <div class="modal-header">
+      <h2 class="modal-title">Send Offer via Email</h2>
+      <button class="modal-close" (click)="closeEmailModal()">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M15 5L5 15M5 5l10 10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <div style="padding: 20px; display:flex; flex-direction:column; gap:12px;">
+      <div class="form-group">
+        <label class="form-label">To</label>
+        <input type="email" class="form-input" [(ngModel)]="emailForm.to" name="emailTo" placeholder="recipient@example.com" />
+      </div>
+      <div class="row-2">
+        <div class="form-group">
+          <label class="form-label">CC</label>
+          <input type="text" class="form-input" [(ngModel)]="emailForm.cc" name="emailCc" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">BCC</label>
+          <input type="text" class="form-input" [(ngModel)]="emailForm.bcc" name="emailBcc" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Subject</label>
+        <input type="text" class="form-input" [(ngModel)]="emailForm.subject" name="emailSubject" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Body</label>
+        <textarea class="form-textarea" rows="5" [(ngModel)]="emailForm.body" name="emailBody"></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" (click)="closeEmailModal()">Cancel</button>
+      <button class="btn btn-primary" (click)="sendOfferEmail()">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M14.667 1.333L7.333 8.667M14.667 1.333L10 14.667l-2.667-6-6-2.667 14-4.667z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Send &amp; Mark Sent
+      </button>
+    </div>
   </div>
 </div>
 
@@ -207,6 +458,8 @@
           <span class="version-date">{{ formatDisplayDate(hv.date) }}</span>
           <span class="version-badge" *ngIf="i === historyOffers.length - 1">Latest</span>
           <span class="version-badge version-badge-old" *ngIf="i < historyOffers.length - 1">Rev {{ i + 1 }}</span>
+          <span *ngIf="isOfferSent(hv)" style="font-size:10px; color:#38a169; font-weight:600; display:block; margin-top:2px;">✓ Sent</span>
+          <span *ngIf="!isOfferSent(hv)" style="font-size:10px; color:#94a3b8; display:block; margin-top:2px;">Not Sent</span>
         </div>
       </div>
 
@@ -227,30 +480,39 @@
 <!-- Reusable history detail template -->
 <ng-template #historyDetailTpl let-offer="offer">
   <div class="history-offer-detail">
+    <ng-container *ngIf="getChangedFields(offer) as ch">
     <div class="info-grid">
       <div class="info-item">
         <span class="info-label">Offer Reference</span>
         <span class="info-value">{{ offer?.offerRef || '-' }}</span>
       </div>
       <div class="info-item">
-        <span class="info-label">Date</span>
-        <span class="info-value">{{ formatDisplayDate(offer?.date) }}</span>
+        <span class="info-label" [style.color]="ch.has('date') ? '#e53e3e' : null">
+          Date <span *ngIf="ch.has('date')" style="color:#e53e3e;">●</span>
+        </span>
+        <span class="info-value" [style.color]="ch.has('date') ? '#e53e3e' : null">{{ formatDisplayDate(offer?.date) }}</span>
       </div>
       <div class="info-item">
         <span class="info-label">Customer</span>
         <span class="info-value">{{ offer?.customerName }}</span>
       </div>
       <div class="info-item">
-        <span class="info-label">Payment Terms</span>
-        <span class="info-value">{{ offer?.paymentTerms || '-' }}</span>
+        <span class="info-label" [style.color]="ch.has('paymentTerms') ? '#e53e3e' : null">
+          Payment Terms <span *ngIf="ch.has('paymentTerms')" style="color:#e53e3e;">●</span>
+        </span>
+        <span class="info-value" [style.color]="ch.has('paymentTerms') ? '#e53e3e' : null">{{ offer?.paymentTerms || '-' }}</span>
       </div>
       <div class="info-item">
-        <span class="info-label">Validity</span>
-        <span class="info-value">{{ offer?.validity || '-' }}</span>
+        <span class="info-label" [style.color]="ch.has('validity') ? '#e53e3e' : null">
+          Validity <span *ngIf="ch.has('validity')" style="color:#e53e3e;">●</span>
+        </span>
+        <span class="info-value" [style.color]="ch.has('validity') ? '#e53e3e' : null">{{ offer?.validity || '-' }}</span>
       </div>
       <div class="info-item">
-        <span class="info-label">Grand Total</span>
-        <span class="info-value">₹{{ offer?.grandTotal | number:'1.2-2' }}</span>
+        <span class="info-label" [style.color]="ch.has('grandTotal') ? '#e53e3e' : null">
+          Grand Total <span *ngIf="ch.has('grandTotal')" style="color:#e53e3e;">●</span>
+        </span>
+        <span class="info-value" [style.color]="ch.has('grandTotal') ? '#e53e3e' : null">₹{{ offer?.grandTotal | number:'1.2-2' }}</span>
       </div>
     </div>
 
@@ -260,6 +522,10 @@
         <thead>
           <tr>
             <th>Item</th>
+            <th>Make</th>
+            <th>Form</th>
+            <th>Density</th>
+            <th>Specifications</th>
             <th>HSN</th>
             <th>Qty</th>
             <th>Rate</th>
@@ -267,16 +533,33 @@
           </tr>
         </thead>
         <tbody>
-          <tr *ngFor="let it of offer.items">
+          <tr *ngFor="let it of offer.items; let i = index">
             <td>{{ it.name }}</td>
+            <td [style.color]="ch.has('make_'+i) ? '#e53e3e' : null">{{ it.make || '-' }}<span *ngIf="ch.has('make_'+i)" style="color:#e53e3e;"> ●</span></td>
+            <td [style.color]="ch.has('form_'+i) ? '#e53e3e' : null">{{ it.form || '-' }}<span *ngIf="ch.has('form_'+i)" style="color:#e53e3e;"> ●</span></td>
+            <td [style.color]="ch.has('density_'+i) ? '#e53e3e' : null">{{ it.density || '-' }}<span *ngIf="ch.has('density_'+i)" style="color:#e53e3e;"> ●</span></td>
+            <td [style.color]="ch.has('fsk_'+i) ? '#e53e3e' : null">{{ it.fsk || '-' }}<span *ngIf="ch.has('fsk_'+i)" style="color:#e53e3e;"> ●</span></td>
             <td>{{ it.hsn }}</td>
             <td>{{ it.qty }}</td>
-            <td>₹{{ it.rate | number:'1.2-2' }}</td>
+            <td [style.color]="ch.has('rate_'+i) ? '#e53e3e' : null">₹{{ it.rate | number:'1.2-2' }}<span *ngIf="ch.has('rate_'+i)" style="color:#e53e3e;"> ●</span></td>
             <td>₹{{ it.total | number:'1.2-2' }}</td>
           </tr>
         </tbody>
       </table>
     </div>
+
+    <!-- T&C changes -->
+    <div *ngIf="offer?.terms" style="margin-top:10px; padding:8px 10px; background:#f7faff; border-radius:6px; border:1px solid #e2e8f0;">
+      <span class="info-label" [style.color]="ch.has('terms') ? '#e53e3e' : '#4a5568'" style="font-size:11px; font-weight:600; display:block; margin-bottom:4px;">
+        Terms &amp; Conditions <span *ngIf="ch.has('terms')" style="color:#e53e3e;">●</span>
+      </span>
+      <span class="info-value" [style.color]="ch.has('terms') ? '#e53e3e' : null" style="font-size:12px; white-space:pre-wrap;">{{ offer.terms }}</span>
+    </div>
+
+    <div *ngIf="ch.size > 0" style="margin-top:10px;font-size:11px;color:#e53e3e;font-style:italic;">
+      ● Fields marked in red changed from the previous revision.
+    </div>
+    </ng-container>
   </div>
 </ng-template>
 
@@ -300,109 +583,135 @@
       </button>
     </div>
 
-    <div class="view-content">
-      <div class="info-grid">
-        <div class="info-item">
-          <span class="info-label">Offer Reference</span>
-          <span class="info-value">{{ selectedOffer?.offerRef }}</span>
-        </div>
-        <div class="info-item">
-          <span class="info-label">Customer</span>
-          <span class="info-value">{{ selectedOffer?.customerName }}</span>
-        </div>
-        <!-- ✅ CHANGED: formatted as dd/mm/yy -->
-        <div class="info-item">
-          <span class="info-label">Date</span>
-          <span class="info-value">{{ formatDisplayDate(selectedOffer?.date) }}</span>
-        </div>
-        <div class="info-item">
-          <span class="info-label">Payment Terms</span>
-          <span class="info-value">{{ selectedOffer?.paymentTerms || '-' }}</span>
-        </div>
-        <div class="info-item">
-          <span class="info-label">Validity</span>
-          <span class="info-value">{{ selectedOffer?.validity || '-' }}</span>
-        </div>
-      </div>
+    <!-- PDF-style letter preview (C20) -->
+    <div class="view-content" style="overflow-y:auto; max-height:70vh; padding:0;">
+      <div style="background:#fff; border:1px solid #d1dae9; border-radius:6px; margin:16px 20px; padding:28px 36px; font-family:serif; font-size:13px; color:#1a202c; min-height:500px;">
 
-      <div class="items-section">
-        <h3 class="section-title">Items</h3>
-        <div class="items-table-wrapper" *ngIf="selectedOffer?.items?.length">
-          <table class="items-table">
-            <thead>
-              <tr>
-                <th>Item</th>
-                <th>HSN</th>
-                <th>Qty</th>
-                <th>Rate</th>
-                <th>Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr *ngFor="let it of selectedOffer.items">
-                <td>{{ it.name }}</td>
-                <td>{{ it.hsn }}</td>
-                <td>{{ it.qty }}</td>
-                <td>₹{{ it.rate | number:'1.2-2' }}</td>
-                <td>₹{{ it.total | number:'1.2-2' }}</td>
-              </tr>
-            </tbody>
+        <!-- Letterhead -->
+        <div style="text-align:center; border-bottom:2px solid #1a202c; padding-bottom:10px; margin-bottom:14px;">
+          <div style="font-size:17px; font-weight:700; letter-spacing:0.04em;">NAVBHARAT INSULATION &amp; ENGG CO</div>
+          <div style="font-size:10px; color:#4a5568; margin-top:3px;">A.N. HOUSE, TPS III, 31ST RD, LINKING RD, BANDRA, MUMBAI, MAHARASHTRA, INDIA 400050</div>
+          <div style="font-size:10px; color:#4a5568;">E: info&#64;navbharatgroup.com &nbsp;|&nbsp; W: www.navbharatgroup.com</div>
+        </div>
+
+        <!-- Ref / Date -->
+        <div style="display:flex; justify-content:space-between; margin-bottom:10px; font-size:12px;">
+          <span><strong>Ref:</strong> {{ selectedOffer?.offerRef || ('NIEC/MDD/' + selectedOffer?.id) }}</span>
+          <span><strong>Date:</strong> {{ formatDisplayDate(selectedOffer?.date) }}</span>
+        </div>
+
+        <!-- To block -->
+        <div style="margin-bottom:12px; font-size:12px;">
+          <div><strong>To,</strong></div>
+          <div style="font-weight:700;">{{ selectedOffer?.customerSnapshot?.companyName || selectedOffer?.customerName }}</div>
+          <div *ngIf="selectedOffer?.customerSnapshot?.billing as b">
+            <span *ngIf="b.street">{{ b.street }}, </span>
+            <span *ngIf="b.area">{{ b.area }}, </span>
+            <span *ngIf="b.city">{{ b.city }}</span>
+            <span *ngIf="b.state"> – {{ b.state }}</span>
+            <span *ngIf="b.pincode"> {{ b.pincode }}</span>
+          </div>
+        </div>
+
+        <!-- Subject -->
+        <div style="margin-bottom:10px; font-size:12px;">
+          <strong>Subject:</strong> Your enquiry for supply of {{ getOfferItemNames(selectedOffer) || 'Products' }}
+        </div>
+
+        <!-- Intro -->
+        <div style="margin-bottom:12px; font-size:11.5px; color:#2d3748;">
+          Thank you for your enquiry. Please find our best quotation as per your requirement.
+        </div>
+
+        <!-- Spec table -->
+        <table style="width:100%; border-collapse:collapse; font-size:11.5px; margin-bottom:12px;">
+          <thead>
+            <tr style="background:#1a202c; color:#fff;">
+              <th style="padding:5px 8px; border:1px solid #4a5568; text-align:left;">Specification</th>
+              <th style="padding:5px 8px; border:1px solid #4a5568; text-align:center;">Details</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let it of selectedOffer?.items; let i = index" style="border-bottom:1px solid #e2e8f0;">
+              <td style="padding:4px 8px; border:1px solid #d1dae9; font-weight:600;">{{ it.name }}</td>
+              <td style="padding:4px 8px; border:1px solid #d1dae9; text-align:center;">
+                <span *ngIf="it.make">Make: {{ it.make }} &nbsp;</span>
+                <span *ngIf="it.form">Form: {{ it.form }} &nbsp;</span>
+                <span *ngIf="it.density">Density: {{ it.density }} &nbsp;</span>
+                <span *ngIf="it.fsk">{{ it.fsk }} &nbsp;</span>
+                Qty: {{ it.qty }} {{ it.uom }}
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:4px 8px; border:1px solid #d1dae9; font-weight:600;">Rate (per unit)</td>
+              <td style="padding:4px 8px; border:1px solid #d1dae9; text-align:center;">
+                ₹{{ selectedOffer?.items?.length ? ((selectedOffer.grandTotal || 0) / (getTotalQty(selectedOffer.items) || 1) | number:'1.2-2') : '—' }}
+              </td>
+            </tr>
+            <tr><td style="padding:4px 8px; border:1px solid #d1dae9; font-weight:600;">Taxes</td><td style="padding:4px 8px; border:1px solid #d1dae9; text-align:center;">Extra – GST as applicable</td></tr>
+            <tr *ngIf="selectedOffer?.freightCharges > 0">
+              <td style="padding:4px 8px; border:1px solid #d1dae9; font-weight:600;">Freight Charges</td>
+              <td style="padding:4px 8px; border:1px solid #d1dae9; text-align:center;">₹{{ selectedOffer?.freightCharges | number:'1.2-2' }}</td>
+            </tr>
+            <tr *ngIf="selectedOffer?.paymentTerms">
+              <td style="padding:4px 8px; border:1px solid #d1dae9; font-weight:600;">Payment Terms</td>
+              <td style="padding:4px 8px; border:1px solid #d1dae9; text-align:center;">{{ selectedOffer?.paymentTerms }}</td>
+            </tr>
+            <tr *ngIf="selectedOffer?.validity">
+              <td style="padding:4px 8px; border:1px solid #d1dae9; font-weight:600;">Offer Validity</td>
+              <td style="padding:4px 8px; border:1px solid #d1dae9; text-align:center;">{{ selectedOffer?.validity }}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <!-- Totals -->
+        <div style="display:flex; justify-content:flex-end; margin-bottom:12px;">
+          <table style="border-collapse:collapse; font-size:11.5px; min-width:240px;">
+            <tr><td style="padding:3px 10px; color:#4a5568;">Subtotal</td><td style="padding:3px 10px; text-align:right;">₹{{ selectedOffer?.subtotal | number:'1.2-2' }}</td></tr>
+            <tr *ngIf="selectedOffer?.freightCharges > 0"><td style="padding:3px 10px; color:#4a5568;">Freight</td><td style="padding:3px 10px; text-align:right;">₹{{ selectedOffer?.freightCharges | number:'1.2-2' }}</td></tr>
+            <tr style="border-top:1px dashed #e2e8f0;"><td style="padding:3px 10px; font-weight:600; color:#2d3748;">Taxable Amount</td><td style="padding:3px 10px; text-align:right; font-weight:600;">₹{{ ((selectedOffer?.subtotal || 0) + (selectedOffer?.freightCharges || 0)) | number:'1.2-2' }}</td></tr>
+            <ng-container *ngIf="selectedOffer?.gstType !== 'igst'">
+              <tr><td style="padding:3px 10px; color:#4a5568;">CGST (9%)</td><td style="padding:3px 10px; text-align:right;">₹{{ (selectedOffer?.cgst || selectedOffer?.gst / 2) | number:'1.2-2' }}</td></tr>
+              <tr><td style="padding:3px 10px; color:#4a5568;">SGST (9%)</td><td style="padding:3px 10px; text-align:right;">₹{{ (selectedOffer?.sgst || selectedOffer?.gst / 2) | number:'1.2-2' }}</td></tr>
+            </ng-container>
+            <ng-container *ngIf="selectedOffer?.gstType === 'igst'">
+              <tr><td style="padding:3px 10px; color:#4a5568;">IGST (18%)</td><td style="padding:3px 10px; text-align:right;">₹{{ (selectedOffer?.igst || selectedOffer?.gst) | number:'1.2-2' }}</td></tr>
+            </ng-container>
+            <tr style="border-top:2px solid #1a202c; font-weight:700; font-size:12.5px;">
+              <td style="padding:5px 10px;">Grand Total</td>
+              <td style="padding:5px 10px; text-align:right;">₹{{ selectedOffer?.grandTotal | number:'1.2-2' }}</td>
+            </tr>
           </table>
         </div>
-      </div>
 
-      <div class="summary-section-view">
-        <div class="summary-row">
-          <span class="summary-label">Subtotal:</span>
-          <span class="summary-value">₹{{ selectedOffer?.subtotal | number:'1.2-2' }}</span>
+        <!-- Closing -->
+        <div style="font-size:11.5px; margin-bottom:14px; color:#2d3748;">
+          Kindly review the above quote. Feel free to reach out for clarification or to discuss further. Looking forward to your response.
         </div>
-        <div class="summary-row" *ngIf="selectedOffer?.freightCharges > 0">
-          <span class="summary-label">Freight Charges:</span>
-          <span class="summary-value">₹{{ selectedOffer?.freightCharges | number:'1.2-2' }}</span>
-        </div>
-        <div class="summary-row">
-          <span class="summary-label">GST (18%):</span>
-          <span class="summary-value">₹{{ selectedOffer?.gst | number:'1.2-2' }}</span>
-        </div>
-        <!-- CGST + SGST breakdown -->
-        <ng-container *ngIf="selectedOffer?.gstType !== 'igst'">
-          <div class="summary-row" style="padding-left: 16px; border-left: 3px solid #e2e8f0; margin: 4px 0;">
-            <span class="summary-label" style="font-size:13px; color:#94a3b8;">↳ CGST (9%):</span>
-            <span class="summary-value" style="font-size:14px;">₹{{ (selectedOffer?.cgst || (selectedOffer?.gst / 2)) | number:'1.2-2' }}</span>
-          </div>
-          <div class="summary-row" style="padding-left: 16px; border-left: 3px solid #e2e8f0; margin: 4px 0;">
-            <span class="summary-label" style="font-size:13px; color:#94a3b8;">↳ SGST (9%):</span>
-            <span class="summary-value" style="font-size:14px;">₹{{ (selectedOffer?.sgst || (selectedOffer?.gst / 2)) | number:'1.2-2' }}</span>
-          </div>
-        </ng-container>
-        <!-- IGST breakdown -->
-        <ng-container *ngIf="selectedOffer?.gstType === 'igst'">
-          <div class="summary-row" style="padding-left: 16px; border-left: 3px solid #e2e8f0; margin: 4px 0;">
-            <span class="summary-label" style="font-size:13px; color:#94a3b8;">↳ IGST (18%):</span>
-            <span class="summary-value" style="font-size:14px;">₹{{ (selectedOffer?.igst || selectedOffer?.gst) | number:'1.2-2' }}</span>
-          </div>
-        </ng-container>
-        <div class="summary-divider"></div>
-        <div class="summary-row summary-total">
-          <span class="summary-label">Grand Total (Incl. GST):</span>
-          <span class="summary-value">₹{{ selectedOffer?.grandTotal | number:'1.2-2' }}</span>
-        </div>
-      </div>
 
-      <div class="terms-section" *ngIf="selectedOffer?.terms">
-        <h3 class="section-title">Terms & Conditions</h3>
-        <p class="terms-text">{{ selectedOffer?.terms }}</p>
-      </div>
+        <!-- Regards -->
+        <div style="font-size:12px; margin-bottom:6px;">Regards,</div>
+        <div style="font-weight:700; font-size:12px;">For NAVBHARAT INSULATION &amp; ENGG CO</div>
 
-      <div class="notes-section" *ngIf="selectedOffer?.notes">
-        <h3 class="section-title">Notes</h3>
-        <p class="notes-text">{{ selectedOffer?.notes }}</p>
+        <!-- T&C (separate section) -->
+        <div *ngIf="selectedOffer?.terms" style="margin-top:20px; border-top:1px solid #d1dae9; padding-top:14px;">
+          <div style="font-weight:700; font-size:12px; margin-bottom:6px;">Terms &amp; Conditions</div>
+          <div style="font-size:11px; white-space:pre-wrap; color:#2d3748;">{{ selectedOffer?.terms }}</div>
+        </div>
+
+        <!-- Attachments -->
+        <div *ngIf="selectedOffer?.attachments?.length" style="margin-top:14px; border-top:1px solid #d1dae9; padding-top:10px;">
+          <div style="font-weight:700; font-size:12px; margin-bottom:6px;">Enclosed Within:</div>
+          <div *ngFor="let att of selectedOffer.attachments; let ai = index" style="font-size:11px; margin-bottom:3px;">
+            {{ ai + 1 }}. <a [href]="att.data" [download]="att.name" style="color:#2b6cb0;">{{ att.name }}</a>
+          </div>
+        </div>
       </div>
     </div>
 
     <div class="modal-footer">
       <button class="btn btn-secondary" (click)="closeViewModal()">Close</button>
-      <button class="btn btn-primary" (click)="openOfferLetterModal()">
+      <button class="btn btn-primary" (click)="downloadOfferDirect()">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
           <path
             d="M14 10v2.667A1.333 1.333 0 0112.667 14H3.333A1.333 1.333 0 012 12.667V10M4.667 6.667L8 10m0 0l3.333-3.333M8 10V2"
@@ -456,14 +765,13 @@
 
             <div class="form-group">
               <label class="form-label">
-                Subject: <span class="subject-prefix">Your enquiry for supply of</span>
+                Subject <span style="font-weight:400;color:#718096;">(editable)</span>
               </label>
-              <select class="form-input" [ngModel]="selectedSubjectItem"
-                (ngModelChange)="onSubjectProductChange($event)" name="subjectProduct">
-                <option *ngFor="let it of selectedOffer?.items" [ngValue]="it">
-                  {{ it.name }}
-                </option>
-              </select>
+              <input type="text" class="form-input" [(ngModel)]="offerLetter['subjectProduct']"
+                name="subjectProduct" placeholder="Your enquiry for supply of…" />
+              <div style="font-size:11px;color:#94a3b8;margin-top:3px;">
+                Prefix: "Your enquiry for supply of" &nbsp;·&nbsp; All materials pre-filled
+              </div>
             </div>
           </div>
         </div>

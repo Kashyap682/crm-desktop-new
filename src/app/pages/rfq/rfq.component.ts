@@ -39,6 +39,7 @@ interface RfqRecord {
   inquiryId: string;
   vendorName: string;
   vendorAddress?: string;
+  contactTitle?: string;
   contactFirstName: string;
   contactLastName: string;
   mobile: string;
@@ -70,6 +71,7 @@ export class RfqComponent implements OnInit {
   rfqDate = '';
   inquiryId = '';
   vendorName = '';
+  contactTitle = '';
   contactFirstName = '';
   contactLastName = '';
   vendorAddress = '';
@@ -105,6 +107,46 @@ export class RfqComponent implements OnInit {
     await this.loadInquiries();
     await this.loadVendors();
     await this.loadRfqs();
+
+    // Pre-fill form when navigated from inquiry "Raise RFQ" button
+    const state = history.state as any;
+    if (state?.fromInquiry && state?.item) {
+      this.resetForm();                                     // sets rfqId, date, shipping defaults
+
+      // Set inquiry ID — works for both saved inquiries and new (unsaved) preview IDs
+      if (state.inquiryId) {
+        this.inquiryId = state.inquiryId;
+      }
+
+      // Map the inquiry item fields → RFQ item fields
+      const it = state.item;
+      this.items = [{
+        product:   it.productName || it.product || '',
+        form:      it.form      || '',
+        make:      it.make      || '',
+        density:   it.density   || '',
+        thickness: it.thickness || '',
+        size:      it.size      || '',
+        fsk:       it.fsk       || '',
+        grade:     it.grade     || '',
+        alloy:     it.alloy     || '',
+        temper:    it.temper    || '',
+        nb:        it.nb        || '',
+        maxTemp:   it.maxTemp   || '',
+        color:     it.color     || '',
+        qty:       it.qty       ?? null,
+        uom:       it.uom       || '',
+        fromInquiry: true
+      }];
+
+      // Auto-select vendor if inventory had one linked
+      if (state.vendorName) {
+        this.vendorName = state.vendorName;
+        this.onVendorSelect(state.vendorName); // fills contactFirstName/Last, mobile, email, address
+      }
+
+      this.showForm = true;   // open directly to the new-RFQ form, skip the list
+    }
   }
 
   private emptyAddr(): RfqAddress {
@@ -146,6 +188,7 @@ export class RfqComponent implements OnInit {
     this.inquiryId = '';
     this.vendorName = '';
     this.vendorAddress = '';
+    this.contactTitle = '';
     this.contactFirstName = '';
     this.contactLastName = '';
     this.mobile = '';
@@ -209,8 +252,9 @@ export class RfqComponent implements OnInit {
     const v = this.vendors.find((x: any) => x.companyName === name);
     if (!v) return;
     const pc = v.primaryContact || {};
-    this.contactFirstName = pc.firstName || v.contactFirstName || '';
-    this.contactLastName = pc.lastName || v.contactLastName || '';
+    this.contactTitle     = pc.title       || '';
+    this.contactFirstName = pc.firstName   || v.contactFirstName || '';
+    this.contactLastName  = pc.lastName    || v.contactLastName  || '';
     this.mobile = pc.mobile || v.mobile || '';
     this.email = pc.email || v.email || '';
     const oa = v.officeAddress;
@@ -252,6 +296,7 @@ export class RfqComponent implements OnInit {
       inquiryId: this.inquiryId,
       vendorName: this.vendorName,
       vendorAddress: this.vendorAddress,
+      contactTitle: this.contactTitle,
       contactFirstName: this.contactFirstName,
       contactLastName: this.contactLastName,
       mobile: this.mobile,
@@ -288,8 +333,9 @@ export class RfqComponent implements OnInit {
     this.inquiryId = rfq.inquiryId;
     this.vendorName = rfq.vendorName;
     this.vendorAddress = rfq.vendorAddress || '';
+    this.contactTitle     = rfq.contactTitle || '';
     this.contactFirstName = rfq.contactFirstName;
-    this.contactLastName = rfq.contactLastName;
+    this.contactLastName  = rfq.contactLastName;
     this.mobile = rfq.mobile;
     this.email = rfq.email;
     this.items = JSON.parse(JSON.stringify(rfq.items));
@@ -418,7 +464,8 @@ export class RfqComponent implements OnInit {
     ws.getRow(r).height = 8;
 
     // Info grid (2-pane)
-    const contactName = `${safe(rfq.contactFirstName)} ${safe(rfq.contactLastName)}`.trim();
+    const titleStr = rfq.contactTitle ? rfq.contactTitle.replace(/\.?$/, '.') + ' ' : '';
+    const contactName = `${titleStr}${safe(rfq.contactFirstName)} ${safe(rfq.contactLastName)}`.trim();
     const leftInfo: [string, string][] = ([
       ['RFQ Number', safe(rfq.rfqId)],
       ['RFQ Date', safe(rfq.rfqDate)],

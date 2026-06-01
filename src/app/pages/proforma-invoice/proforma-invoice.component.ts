@@ -95,8 +95,30 @@ export class ProformaInvoiceComponent implements OnInit {
       )
     ] as string[];
 
-    // Handle navigation from Sales Order (Generate PI)
+    // Handle navigation from Sales Order or Offer
     const state = history.state;
+
+    // C38: Handle navigation from Offer (Order Received → Generate PI)
+    if (state?.fromOffer) {
+      const offer = state.fromOffer;
+      const companyName = offer.customerSnapshot?.companyName || offer.customerName || '';
+      this.selectedCompany = companyName;
+      this.applyCompanyToForm(companyName);
+      this.form.linkedOfferId = offer.id;
+      if (offer.items?.length) {
+        this.form.items = offer.items.map((i: any) => ({
+          description: i.name || '',
+          hsn: i.hsn || '',
+          qty: i.qty || 0,
+          uom: i.uom || '',
+          rate: i.rate || 0
+        }));
+      }
+      if (offer.paymentTerms) this.form.paymentTerms = offer.paymentTerms;
+      if (offer.gstType) this.form.gstType = offer.gstType;
+      this.calculateTotals();
+    }
+
     if (state?.fromSalesOrder) {
       this.selectedCompany = state.companyName || '';
       this.applyCompanyToForm(state.companyName);
@@ -715,6 +737,74 @@ export class ProformaInvoiceComponent implements OnInit {
       this.loading = false;
       this.isPrintMode = false;
     }
+  }
+
+  /* ── C39: Create Reminder for PI + email option ─────────── */
+  showReminderModal = false;
+  reminderPI: any = null;
+  reminderEmail = '';
+
+  async createReminderForPI(p: any) {
+    // 1. Create the reminder in DB
+    const followUpDate = new Date();
+    followUpDate.setDate(followUpDate.getDate() + 2);
+    const reminder = {
+      date: followUpDate.toISOString().slice(0, 10),
+      time: '10:00',
+      type: 'proforma',
+      source: 'system',
+      status: 'pending',
+      name: p.buyerName || '',
+      mobile: '',
+      referenceNo: p.proformaNumber || '',
+      note: `Follow-up for Proforma Invoice ${p.proformaNumber} – ${p.buyerName}`,
+      createdAt: new Date().toISOString()
+    };
+    await this.db.add('reminders', reminder);
+
+    // 2. Look up contact email from customer database
+    const customer = this.customers.find((c: any) =>
+      (c.companyName || '').trim().toLowerCase() === (p.buyerName || '').trim().toLowerCase()
+    );
+    this.reminderEmail = customer?.primaryContact?.email
+      || customer?.email
+      || '';
+
+    // 3. Show modal offering to send email
+    this.reminderPI = p;
+    this.showReminderModal = true;
+  }
+
+  sendPIEmail() {
+    if (!this.reminderPI) return;
+    const subject = encodeURIComponent(
+      `Proforma Invoice ${this.reminderPI.proformaNumber} – ${this.reminderPI.buyerName}`
+    );
+    const body = encodeURIComponent(
+      `Dear ${this.reminderPI.buyerName},\n\nPlease find attached our Proforma Invoice ${this.reminderPI.proformaNumber} for your kind reference.\n\nTotal Amount: ₹${this.reminderPI.total}\n\nPayment Terms: ${this.reminderPI.paymentTerms || 'As discussed'}\n\nKindly arrange payment at the earliest.\n\nRegards,\nNavbharat Insulation & Engg Co`
+    );
+    window.open(`mailto:${this.reminderEmail}?subject=${subject}&body=${body}`);
+    this.showReminderModal = false;
+  }
+
+  closeReminderModal() {
+    this.showReminderModal = false;
+    this.reminderPI = null;
+    this.reminderEmail = '';
+  }
+
+  /* ── C40: Preview PI ────────────────────────────────────── */
+  showPreviewModal = false;
+  previewProforma: any = null;
+
+  openPreview(p: any) {
+    this.previewProforma = p;
+    this.showPreviewModal = true;
+  }
+
+  closePreview() {
+    this.showPreviewModal = false;
+    this.previewProforma = null;
   }
 
   // Amount in words helper

@@ -497,14 +497,22 @@
           </svg>
           MIR
         </button>
-        <button type="button" class="btn btn-pi" (click)="generatePI()">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-            <path
-              d="M13.333 2H2.667A.667.667 0 002 2.667v10.666c0 .368.299.667.667.667h10.666a.667.667 0 00.667-.667V2.667A.667.667 0 0013.333 2zM4 5.333h8M4 8h6M4 10.667h4"
-              stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-          </svg>
-          Generate PI
-        </button>
+        <div style="position:relative; display:inline-block;">
+          <button type="button" class="btn btn-secondary" (click)="showEmailDropdown = !showEmailDropdown">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <path d="M14.667 3.333H1.333C.6 3.333 0 3.933 0 4.667v6.666C0 12.067.6 12.667 1.333 12.667h13.334C15.4 12.667 16 12.067 16 11.333V4.667C16 3.933 15.4 3.333 14.667 3.333zM14.667 4.667L8 8.667 1.333 4.667"
+                stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+            Send via Email
+          </button>
+          <div *ngIf="showEmailDropdown" style="position:absolute; bottom:100%; left:0; background:#fff; border:1px solid #e2e8f0; border-radius:6px; box-shadow:0 4px 12px rgba(0,0,0,0.1); min-width:220px; z-index:100; margin-bottom:4px;">
+            <div *ngFor="let email of emailPresets"
+              (click)="sendSalesOrderEmail(email)"
+              style="padding:10px 14px; cursor:pointer; font-size:13px; color:#2d3748; border-bottom:1px solid #f7fafc;"
+              onmouseover="this.style.background='#f7faff'" onmouseout="this.style.background=''"
+            >{{ email }}</div>
+          </div>
+        </div>
         <button type="button" class="btn btn-secondary" (click)="downloadSalesOrderPDF()">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
             <path

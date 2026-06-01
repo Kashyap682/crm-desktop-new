@@ -148,14 +148,6 @@
                   </svg>
                   Sales Order
                 </button>
-                <button *ngIf="inq.decision === 'Order Received'" class="action-item" (click)="openpurchaseOrder(inq); closeActionMenu()">
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                    <path
-                      d="M14 4H2v8.667A1.333 1.333 0 003.333 14h9.334A1.333 1.333 0 0014 12.667V4zM2 4l1.333-2h9.334L14 4"
-                      stroke="currentColor" stroke-width="1.5" />
-                  </svg>
-                  Purchase Order
-                </button>
                 <button class="action-item" (click)="downloadInquiryPdf(inq); closeActionMenu()">
                   <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                     <path
@@ -248,21 +240,46 @@
           </div>
           <div class="form-group">
             <label class="form-label">Company Name <span class="required">*</span></label>
-            <select class="form-select" [(ngModel)]="currentInquiry!.companyName" name="companyName"
-              (change)="onCompanySelect()" required>
-              <option value="">Select Company</option>
-              <option *ngFor="let c of customers" [value]="c.companyName">{{ c.companyName }}</option>
-            </select>
+            <div style="position:relative;">
+              <input type="text" class="form-input"
+                [(ngModel)]="currentInquiry!.companyName" name="companyName"
+                (input)="onCompanyNameInput()" (blur)="onCompanyBlur()"
+                autocomplete="off" required placeholder="Type to search or add new..." />
+              <!-- Autocomplete suggestions from database -->
+              <div *ngIf="companyNameSuggestions.length"
+                style="position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #e2e8f0;border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.12);z-index:500;max-height:200px;overflow-y:auto;">
+                <div *ngFor="let s of companyNameSuggestions"
+                  style="padding:9px 14px;cursor:pointer;font-size:13px;border-bottom:1px solid #f1f5f9;"
+                  (mousedown)="pickCompany(s)">
+                  {{ s }}
+                </div>
+              </div>
+            </div>
+            <!-- New-customer indicator -->
+            <div *ngIf="currentInquiry!.companyName && isNewCustomer()"
+              style="margin-top:5px;font-size:11px;color:#d97706;display:flex;align-items:center;gap:4px;">
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+                <path d="M8 1.333A6.667 6.667 0 1 0 8 14.667 6.667 6.667 0 0 0 8 1.333zM8 5.333v3.334M8 10.667h.007" stroke="#d97706" stroke-width="1.5" stroke-linecap="round"/>
+              </svg>
+              New customer — fill their details in Customer Management after saving
+            </div>
           </div>
         </div>
 
         <div class="row-2">
           <div class="form-group">
             <label class="form-label">Customer Name</label>
-            <select class="form-select" [(ngModel)]="selectedContactRole" name="selectedContactRole" (change)="onCustomerContactChange()">
-              <option value="">Select Contact</option>
+            <!-- Existing customer: pick from Primary / Secondary contact -->
+            <select *ngIf="!isNewCustomer() && contactOptions.length > 0"
+              class="form-select" [(ngModel)]="selectedContactRole"
+              name="selectedContactRole" (change)="onCustomerContactChange()">
               <option *ngFor="let n of contactOptions" [value]="n.key">{{ n.label }}</option>
             </select>
+            <!-- New customer (or no contacts loaded yet): free-text entry -->
+            <input *ngIf="isNewCustomer() || contactOptions.length === 0"
+              type="text" class="form-input"
+              [(ngModel)]="currentInquiry!.customerName" name="customerName"
+              placeholder="Enter contact person name" />
           </div>
           <div class="form-group">
             <label class="form-label">Office Address</label>
@@ -279,11 +296,18 @@
           <div class="form-group">
             <label class="form-label">Mob No.</label>
             <div style="display:flex;gap:6px">
-              <select [ngModel]="currentInquiry!.customerPhoneCode ?? '+91'"
-                (ngModelChange)="currentInquiry!.customerPhoneCode=$event"
-                name="customerPhoneCode" class="form-select" style="width:80px;flex-shrink:0">
-                <option *ngFor="let cc of countryCodes" [value]="cc">{{ cc }}</option>
-              </select>
+              <div class="inq-dial-wrap" (click)="$event.stopPropagation(); toggleInqDial()">
+                <img [src]="'assets/flags/' + getInqPhoneIso() + '.svg'" class="inq-dial-flag" />
+                <span class="inq-dial-code">{{ currentInquiry!.customerPhoneCode ?? '+91' }}</span>
+                <span class="inq-dial-caret">▾</span>
+                <div class="inq-dial-list" *ngIf="openDialDropdown === 'inq'">
+                  <div *ngFor="let cc of countryDialCodes" class="inq-dial-option"
+                    (mousedown)="$event.preventDefault(); pickInqDial(cc.code, cc.iso)">
+                    <img [src]="'assets/flags/' + cc.iso + '.svg'" class="inq-dial-flag" />
+                    <span>{{ cc.code }} {{ cc.name }}</span>
+                  </div>
+                </div>
+              </div>
               <input type="text" class="form-input" [(ngModel)]="currentInquiry!.customerPhone" name="customerPhone" />
             </div>
           </div>
@@ -318,7 +342,7 @@
               </button>
             </div>
 
-            <!-- Row 1: Product, HSN, Make -->
+            <!-- Row 1: Product, Form, Make -->
             <div class="row-3">
               <div class="form-group">
                 <label class="form-label">Product Name</label>
@@ -328,12 +352,12 @@
                   <option *ngFor="let p of inventory" [value]="p.displayName || p.name">{{ p.displayName }}</option>
                 </select>
               </div>
-              <div class="form-group" [class.field-disabled]="isFieldShut(it,'hsn')" [class.readonly-field-wrap]="isFieldLocked(it,'hsn')">
-                <label class="form-label">HSN Code</label>
-                <input type="text" class="form-input" [(ngModel)]="it.hsn" name="hsn{{i}}"
-                  [readonly]="isFieldLocked(it,'hsn')" [disabled]="isFieldShut(it,'hsn')"
-                  [class.readonly-field]="isFieldLocked(it,'hsn')"
-                  [placeholder]="isFieldShut(it,'hsn') ? 'N/A' : ''" />
+              <div class="form-group" [class.field-disabled]="isFieldShut(it,'form')" [class.readonly-field-wrap]="isFieldLocked(it,'form')">
+                <label class="form-label">Form</label>
+                <input type="text" class="form-input" [(ngModel)]="it.form" name="form{{i}}"
+                  [readonly]="isFieldLocked(it,'form')" [disabled]="isFieldShut(it,'form')"
+                  [class.readonly-field]="isFieldLocked(it,'form')"
+                  [placeholder]="isFieldShut(it,'form') ? 'N/A' : ''" />
               </div>
               <div class="form-group" [class.field-disabled]="isFieldShut(it,'make')" [class.readonly-field-wrap]="isFieldLocked(it,'make')">
                 <label class="form-label">Make</label>
@@ -344,15 +368,19 @@
               </div>
             </div>
 
-            <!-- Row 2: Form, Density, Thickness -->
-            <div class="row-3">
-              <div class="form-group" [class.field-disabled]="isFieldShut(it,'form')" [class.readonly-field-wrap]="isFieldLocked(it,'form')">
-                <label class="form-label">Form</label>
-                <input type="text" class="form-input" [(ngModel)]="it.form" name="form{{i}}"
-                  [readonly]="isFieldLocked(it,'form')" [disabled]="isFieldShut(it,'form')"
-                  [class.readonly-field]="isFieldLocked(it,'form')"
-                  [placeholder]="isFieldShut(it,'form') ? 'N/A' : ''" />
+            <!-- Dynamic spec summary (C7) -->
+            <div *ngIf="it.productName && getSpecEntries(it).length"
+              style="margin:6px 0 10px;background:#f0f6ff;border:1px solid #c7d9f5;border-radius:6px;padding:8px 12px;">
+              <div style="font-size:11px;font-weight:600;color:#4a6fa5;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em;">Product Specifications</div>
+              <div style="display:flex;flex-wrap:wrap;gap:6px 16px;">
+                <span *ngFor="let s of getSpecEntries(it)" style="font-size:12px;color:#334155;">
+                  <span style="color:#64748b;">{{ s.label }}:</span> {{ s.value }}
+                </span>
               </div>
+            </div>
+
+            <!-- Row 2: Density, Thickness -->
+            <div class="row-2">
               <div class="form-group" [class.field-disabled]="isFieldShut(it,'density')" [class.readonly-field-wrap]="isFieldLocked(it,'density')">
                 <label class="form-label">Density</label>
                 <input type="text" class="form-input" [(ngModel)]="it.density" name="density{{i}}"
@@ -464,6 +492,11 @@
                 <div class="form-group">
                   <label class="form-label">Stock</label>
                   <input type="text" class="form-input" [(ngModel)]="it.stock" name="stock{{i}}" />
+                  <a *ngIf="!it.stock || (+it.stock <= 0) || (+it.stock < (it.qty || 0))"
+                    (click)="goToRFQ(it)"
+                    style="font-size:12px; color:#e53e3e; display:block; margin-top:4px; cursor:pointer; text-decoration:underline;">
+                    ⚠ Stock insufficient — Raise RFQ
+                  </a>
                 </div>
                 <div class="form-group">
                   <label class="form-label">Lead Time</label>
@@ -664,6 +697,43 @@
       <div class="modal-footer">
         <button type="button" (click)="closeFollowUpModal()" class="btn btn-cancel">Cancel</button>
         <button type="button" (click)="addFollowUp()" class="btn btn-save">Add Follow-Up</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Customer Verification Pending Popup (C5) -->
+  <div *ngIf="showVerificationPopup" class="modal-overlay" style="z-index:2000;" (click)="showVerificationPopup=false">
+    <div class="modal-container" style="max-width:440px;" (click)="$event.stopPropagation()">
+      <div class="modal-header" style="background:#fff8e1;border-bottom:1px solid #ffe082;">
+        <h2 class="modal-title" style="color:#b45309;font-size:16px;">
+          ⚠ Customer Verification Pending
+        </h2>
+      </div>
+      <div class="modal-body" style="padding:20px 24px;">
+        <!-- Brand-new customer not yet in database -->
+        <ng-container *ngIf="verificationPopupIsNewCustomer">
+          <p style="margin:0 0 12px;color:#334155;font-size:14px;">
+            The inquiry has been saved successfully. However, <strong>this customer is not yet in the Customer database</strong>.
+          </p>
+          <p style="margin:0 0 10px;color:#64748b;font-size:13px;">
+            Please go to the <strong>Customers</strong> page and add their full details (address, GST number, contact information) to proceed further with this inquiry.
+          </p>
+          <p style="margin:0;color:#64748b;font-size:13px;">
+            Until the customer is added and verified, this inquiry will remain <strong>pending verification</strong>.
+          </p>
+        </ng-container>
+        <!-- Existing customer but GST not verified -->
+        <ng-container *ngIf="!verificationPopupIsNewCustomer">
+          <p style="margin:0 0 12px;color:#334155;font-size:14px;">
+            The inquiry has been saved, but this customer's <strong>GST is not yet verified</strong>.
+          </p>
+          <p style="margin:0;color:#64748b;font-size:13px;">
+            Please go to the <strong>Customers</strong> page, open this customer, enter their GST number — it will be verified automatically.
+          </p>
+        </ng-container>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-save" (click)="showVerificationPopup=false">OK, Got it</button>
       </div>
     </div>
   </div>

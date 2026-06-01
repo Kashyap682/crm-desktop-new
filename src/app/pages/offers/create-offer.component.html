@@ -83,24 +83,10 @@
         </div>
 
         <!-- Customer Info from Inquiry -->
-        <div class="row-3">
-          <div class="form-group">
-            <label class="form-label">Company Name (from Inquiry)</label>
-            <input type="text" class="form-input" [value]="selectedInquiry.companyName || selectedCustomer?.companyName || '-'" readonly
-              style="background-color: #f7fafc; cursor: not-allowed;" />
-          </div>
-
-          <div class="form-group">
-            <label class="form-label">Customer Name (from Inquiry)</label>
-            <input type="text" class="form-input" [value]="selectedInquiry.customerName" readonly
-              style="background-color: #f7fafc; cursor: not-allowed;" />
-          </div>
-
-          <div class="form-group">
-            <label class="form-label">Purchase Rate (₹)</label>
-            <input type="number" class="form-input" [(ngModel)]="offer.purchaseRate" name="purchaseRate"
-              placeholder="Enter purchase rate" min="0" />
-          </div>
+        <div class="form-group">
+          <label class="form-label">Customer Name (from Inquiry)</label>
+          <input type="text" class="form-input" [value]="selectedInquiry.customerName" readonly
+            style="background-color: #f7fafc; cursor: not-allowed;" />
         </div>
 
         <div class="row-2">
@@ -197,6 +183,10 @@
             <thead>
               <tr>
                 <th>Item Name</th>
+                <th>Make</th>
+                <th>Form</th>
+                <th>Density</th>
+                <th>Specifications</th>
                 <th>HSN Code</th>
                 <th>Quantity</th>
                 <th>Rate (₹)</th>
@@ -206,6 +196,10 @@
             <tbody>
               <tr *ngFor="let item of offer.items; let i = index" class="item-row">
                 <td>{{ item.name }}</td>
+                <td><input type="text" class="table-input" [(ngModel)]="item.make" [name]="'make-'+i" style="min-width:80px;" /></td>
+                <td><input type="text" class="table-input" [(ngModel)]="item.form" [name]="'form-'+i" style="min-width:70px;" /></td>
+                <td><input type="text" class="table-input" [(ngModel)]="item.density" [name]="'density-'+i" style="min-width:70px;" /></td>
+                <td><input type="text" class="table-input" [(ngModel)]="item.fsk" [name]="'fsk-'+i" placeholder="FSK/Size/Grade" style="min-width:90px;" /></td>
                 <td>{{ item.hsn }}</td>
                 <td class="qty-cell">{{ item.qty }}</td>
                 <td class="rate-cell">
@@ -259,6 +253,12 @@
           <div class="summary-row" *ngIf="offer.freightCharges > 0">
             <span class="summary-label">Freight Charges:</span>
             <span class="summary-value">₹{{ offer.freightCharges | number:'1.2-2' }}</span>
+          </div>
+
+          <!-- Taxable Amount Row -->
+          <div class="summary-row" style="border-top: 1px dashed #e2e8f0; padding-top: 8px; margin-top: 4px;">
+            <span class="summary-label" style="font-weight: 600;">Taxable Amount:</span>
+            <span class="summary-value" style="font-weight: 600;">₹{{ (offer.subtotal + (offer.freightCharges || 0)) | number:'1.2-2' }}</span>
           </div>
 
           <!-- GST Type Selector -->
@@ -343,6 +343,34 @@
           <textarea class="form-textarea" [(ngModel)]="offer.terms" name="terms" rows="4"
             placeholder="Enter Terms & Conditions"></textarea>
         </div>
+
+        <!-- Attachments (C17/C18) -->
+        <div class="form-group">
+          <label class="form-label">Attachments (Enclosed Within)</label>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <label class="btn btn-secondary" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:6px 14px;font-size:13px;">
+              <input type="file" multiple style="display:none" (change)="addAttachment($event)" />
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1v9M4 4l3-3 3 3M2 11h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+              Attach Files
+            </label>
+            <button type="button" class="btn btn-secondary" style="padding:6px 14px;font-size:13px;" (click)="openLibraryPicker()">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                <path d="M8 1H3a1 1 0 00-1 1v10a1 1 0 001 1h8a1 1 0 001-1V5L8 1z" stroke="currentColor" stroke-width="1.3"/>
+                <path d="M8 1v4h4M4 8h6M4 10.5h4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+              </svg>
+              Pick from Library
+            </button>
+          </div>
+          <div *ngIf="offer.attachments?.length" style="margin-top:8px;display:flex;flex-direction:column;gap:4px;">
+            <div *ngFor="let att of offer.attachments; let ai = index"
+              style="display:flex;align-items:center;gap:8px;font-size:13px;background:#f7faff;padding:5px 10px;border-radius:5px;border:1px solid #e2e8f0;">
+              <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M2 1h7l3 3v8a1 1 0 01-1 1H2a1 1 0 01-1-1V2a1 1 0 011-1z" stroke="#4a6fa5" stroke-width="1.2"/><path d="M9 1v3h3" stroke="#4a6fa5" stroke-width="1.2"/></svg>
+              <a [href]="att.data" [download]="att.name" style="color:#4a6fa5;text-decoration:underline;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ att.name }}</a>
+              <button type="button" (click)="removeAttachment(ai)" style="background:none;border:none;cursor:pointer;color:#e53e3e;font-size:14px;padding:0;">✕</button>
+            </div>
+          </div>
+          <div *ngIf="!offer.attachments?.length" style="margin-top:6px;font-size:12px;color:#94a3b8;">No attachments added.</div>
+        </div>
       </div>
 
       <!-- ACTION BUTTONS -->
@@ -356,9 +384,64 @@
           </svg>
           Save Offer
         </button>
+        <button type="button" class="btn btn-primary" (click)="saveAndSendEmail()" style="gap:7px;">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M2 3l6 5 6-5M2 3h12v10H2V3z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          Save & Send Email
+        </button>
       </div>
 
     </form>
+  </div>
+</div>
+
+<!-- LIBRARY PICKER MODAL -->
+<div *ngIf="showLibraryPicker" class="modal-overlay" (click)="showLibraryPicker = false">
+  <div class="modal-content" style="max-width:700px;width:100%;" (click)="$event.stopPropagation()">
+    <div class="modal-header">
+      <h2 class="modal-title">Pick from Document Library</h2>
+      <button class="modal-close" (click)="showLibraryPicker = false">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+          <path d="M15 5L5 15M5 5l10 10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
+        <input type="text" style="flex:1;min-width:160px;padding:7px 12px;border:1px solid #e2e8f0;border-radius:7px;font-size:13px;"
+          placeholder="Search name, material, tag…" [(ngModel)]="libraryFilterTerm" />
+        <select style="padding:7px 12px;border:1px solid #e2e8f0;border-radius:7px;font-size:13px;background:#fff;"
+          [(ngModel)]="libraryFilterCategory">
+          <option value="">All Categories</option>
+          <option *ngFor="let cat of libraryCategories" [value]="cat">{{ cat }}</option>
+        </select>
+      </div>
+      <div *ngIf="filteredLibraryDocs.length; else noLibraryDocs" style="display:flex;flex-direction:column;gap:8px;max-height:380px;overflow-y:auto;">
+        <div *ngFor="let doc of filteredLibraryDocs"
+          style="display:flex;align-items:center;gap:12px;padding:10px 12px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;">
+          <div style="width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;background:#eff6ff;color:#3b82f6;flex-shrink:0;">
+            {{ doc.fileType?.includes('pdf') ? 'PDF' : doc.fileType?.includes('image') ? 'IMG' : 'FILE' }}
+          </div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:13px;font-weight:600;color:#1a202c;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ doc.name }}</div>
+            <div style="font-size:11px;color:#94a3b8;margin-top:2px;">
+              <span *ngIf="doc.category" style="margin-right:8px;">{{ doc.category }}</span>
+              <span *ngIf="doc.material">{{ doc.material }}</span>
+            </div>
+          </div>
+          <button type="button" (click)="pickFromLibrary(doc)"
+            style="padding:5px 14px;background:#4a6fa5;color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;">
+            Add
+          </button>
+        </div>
+      </div>
+      <ng-template #noLibraryDocs>
+        <div style="text-align:center;padding:32px;color:#94a3b8;font-size:13px;">
+          No documents found. Upload files in the Document Library first.
+        </div>
+      </ng-template>
+    </div>
   </div>
 </div>
 

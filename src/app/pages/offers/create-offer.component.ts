@@ -24,6 +24,12 @@ export class CreateOfferComponent implements OnInit {
   selectedInquiryItemIndices: number[] = []; // which inquiry items are checked
 
   showInquiryPopup = false;
+  showLibraryPicker = false;
+  libraryDocuments: any[] = [];
+  libraryFilterTerm = '';
+  libraryFilterCategory = '';
+  libraryCategories = ['Datasheet', 'MSDS', 'Test Certificate', 'Drawing', 'Brochure', 'Other'];
+
   isEditMode = false;
   editingOfferId: number | null = null;
   originalOffer: any = null;
@@ -35,6 +41,14 @@ export class CreateOfferComponent implements OnInit {
   ];
 
   previewOfferId: string = '';
+
+  offerStatusOptions = [
+    { value: 'order_received',    label: 'Order Received' },
+    { value: 'pending',           label: 'Pending' },
+    { value: 'under_negotiation', label: 'Under Negotiation' },
+    { value: 'order_lost',        label: 'Order Lost' },
+    { value: 'rejected',          label: 'Regret' }
+  ];
 
   offer: any = {
     customerId: null,
@@ -53,7 +67,8 @@ export class CreateOfferComponent implements OnInit {
     sgst: 0,
     igst: 0,
     gstType: 'cgst_sgst', // 'cgst_sgst' | 'igst'
-    grandTotal: 0
+    grandTotal: 0,
+    offerStatus: 'order_received'   // default for directly-added offers
   };
 
   constructor(private db: DBService, private router: Router) { }
@@ -208,7 +223,10 @@ export class CreateOfferComponent implements OnInit {
       );
       const rate = inventoryItem?.price || 0;
       const qty = i.qty || 0;
-      return { name: i.productName, hsn: i.hsn || '', uom: i.uom || inventoryItem?.unit || '', qty, rate, total: qty * rate };
+      return { name: i.productName, hsn: i.hsn || '', uom: i.uom || inventoryItem?.unit || '',
+               make: i.make || '', form: i.form || '', density: i.density || '',
+               thickness: i.thickness || '', fsk: i.fsk || '', size: i.size || '',
+               qty, rate, total: qty * rate };
     });
     this.offer.originalItemRates = this.offer.items.map((item: any) => item.rate);
     this.inquiryItemRates = [...this.offer.originalItemRates];
@@ -238,6 +256,12 @@ export class CreateOfferComponent implements OnInit {
         name: i.productName,
         hsn: i.hsn || '',
         uom: i.uom || inventoryItem?.unit || '',
+        make: i.make || '',
+        form: i.form || '',
+        density: i.density || '',
+        thickness: i.thickness || '',
+        fsk: i.fsk || '',
+        size: i.size || '',
         qty: qty,
         rate: rate,
         total: qty * rate
@@ -278,6 +302,10 @@ export class CreateOfferComponent implements OnInit {
       'Rejected':          'rejected'
     };
     this.inquiryDecision = decisionMap[inq.decision || ''] || '';
+    // Mirror inquiry decision into offerStatus so the offer lands in the right tab
+    if (this.inquiryDecision) {
+      this.offer.offerStatus = this.inquiryDecision;
+    }
 
     // Match customer by name
     const customer = this.customers.find(
@@ -363,7 +391,7 @@ export class CreateOfferComponent implements OnInit {
     return d.toISOString().slice(0, 10);
   }
 
-  async saveOffer() {
+  async saveOffer(sendEmail = false) {
     console.log('═══════════════════════════════════════');
     console.log('💾 SAVING OFFER');
     console.log('═══════════════════════════════════════');
@@ -404,7 +432,7 @@ export class CreateOfferComponent implements OnInit {
         ...this.offer,
         date: new Date().toISOString().slice(0, 10),
         status: 'active',
-        ...(this.inquiryDecision ? { offerStatus: this.inquiryDecision } : {})
+        offerStatus: this.offer.offerStatus || 'order_received'
       });
 
       const offerRef = this.generateOfferRef(offerId);
@@ -416,7 +444,7 @@ export class CreateOfferComponent implements OnInit {
         id: offerId,
         date: new Date().toISOString().slice(0, 10),
         status: 'active',
-        ...(this.inquiryDecision ? { offerStatus: this.inquiryDecision } : {})
+        offerStatus: this.offer.offerStatus || 'order_received'
       });
 
       console.log('✅ New offer created with ID:', offerId, '| Ref:', offerRef);
@@ -441,11 +469,75 @@ export class CreateOfferComponent implements OnInit {
     }
 
     console.log('═══════════════════════════════════════');
-    this.router.navigateByUrl('/offers');
+    if (sendEmail) {
+      // Navigate back and signal offers list to open email modal for this offer
+      this.router.navigate(['/offers'], { state: { openEmailForRef: this.offer.offerRef } });
+    } else {
+      this.router.navigateByUrl('/offers');
+    }
+  }
+
+  async saveAndSendEmail() {
+    await this.saveOffer(true);
   }
 
   goBackToList() {
     this.router.navigateByUrl('/offers');
+  }
+
+  addAttachment(event: Event) {
+    const input = event.target as HTMLInputElement;
+    if (!input.files?.length) return;
+    if (!this.offer.attachments) this.offer.attachments = [];
+    Array.from(input.files).forEach(file => {
+      const reader = new FileReader();
+      reader.onload = (e: any) => {
+        this.offer.attachments.push({ name: file.name, type: file.type, data: e.target.result });
+      };
+      reader.readAsDataURL(file);
+    });
+    input.value = '';
+  }
+
+  removeAttachment(i: number) {
+    this.offer.attachments?.splice(i, 1);
+  }
+
+  async openLibraryPicker() {
+    try {
+      this.libraryDocuments = await this.db.getAll('documents');
+    } catch {
+      this.libraryDocuments = [];
+    }
+    this.libraryFilterTerm = '';
+    this.libraryFilterCategory = '';
+    this.showLibraryPicker = true;
+  }
+
+  get filteredLibraryDocs(): any[] {
+    const term = this.libraryFilterTerm.toLowerCase().trim();
+    return this.libraryDocuments.filter(d => {
+      const matchTerm = !term ||
+        (d.name || '').toLowerCase().includes(term) ||
+        (d.material || '').toLowerCase().includes(term) ||
+        (d.tags || '').toLowerCase().includes(term);
+      const matchCat = !this.libraryFilterCategory || d.category === this.libraryFilterCategory;
+      return matchTerm && matchCat;
+    });
+  }
+
+  pickFromLibrary(doc: any) {
+    if (!this.offer.attachments) this.offer.attachments = [];
+    const alreadyAdded = this.offer.attachments.some((a: any) => a.name === doc.name && a.libraryId === doc.id);
+    if (!alreadyAdded) {
+      this.offer.attachments.push({
+        name: doc.name,
+        type: doc.fileType,
+        data: doc.fileData,
+        libraryId: doc.id
+      });
+    }
+    this.showLibraryPicker = false;
   }
 
   /** Returns the frozen inventory-sourced rate — unaffected by any edits in the Items section */

@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import * as XLSX from 'xlsx';
@@ -119,10 +119,71 @@ export class VendorComponent implements OnInit {
     'Jammu and Kashmir', 'Ladakh', 'Lakshadweep', 'Puducherry'
   ];
 
-  countryCodes: string[] = [
-    '+91', '+1', '+44', '+971', '+966', '+65', '+61', '+49', '+86', '+81',
-    '+60', '+62', '+880', '+92', '+94', '+977', '+66', '+84', '+55', '+27'
+  /* ─── Country dial codes (identical to customers module) ─── */
+  countryDialCodes = [
+    { code: '+91',  iso: 'in', name: 'India' },
+    { code: '+880', iso: 'bd', name: 'Bangladesh' },
+    { code: '+975', iso: 'bt', name: 'Bhutan' },
+    { code: '+960', iso: 'mv', name: 'Maldives' },
+    { code: '+977', iso: 'np', name: 'Nepal' },
+    { code: '+92',  iso: 'pk', name: 'Pakistan' },
+    { code: '+94',  iso: 'lk', name: 'Sri Lanka' },
+    { code: '+1',   iso: 'us', name: 'United States' },
+    { code: '+1',   iso: 'ca', name: 'Canada' },
+    { code: '+44',  iso: 'gb', name: 'United Kingdom' },
+    { code: '+971', iso: 'ae', name: 'UAE' },
+    { code: '+966', iso: 'sa', name: 'Saudi Arabia' },
+    { code: '+974', iso: 'qa', name: 'Qatar' },
+    { code: '+968', iso: 'om', name: 'Oman' },
+    { code: '+965', iso: 'kw', name: 'Kuwait' },
+    { code: '+973', iso: 'bh', name: 'Bahrain' },
+    { code: '+65',  iso: 'sg', name: 'Singapore' },
+    { code: '+60',  iso: 'my', name: 'Malaysia' },
+    { code: '+62',  iso: 'id', name: 'Indonesia' },
+    { code: '+66',  iso: 'th', name: 'Thailand' },
+    { code: '+84',  iso: 'vn', name: 'Vietnam' },
+    { code: '+63',  iso: 'ph', name: 'Philippines' },
+    { code: '+61',  iso: 'au', name: 'Australia' },
+    { code: '+64',  iso: 'nz', name: 'New Zealand' },
+    { code: '+86',  iso: 'cn', name: 'China' },
+    { code: '+81',  iso: 'jp', name: 'Japan' },
+    { code: '+82',  iso: 'kr', name: 'South Korea' },
+    { code: '+49',  iso: 'de', name: 'Germany' },
+    { code: '+33',  iso: 'fr', name: 'France' },
+    { code: '+39',  iso: 'it', name: 'Italy' },
+    { code: '+34',  iso: 'es', name: 'Spain' },
+    { code: '+55',  iso: 'br', name: 'Brazil' },
+    { code: '+234', iso: 'ng', name: 'Nigeria' },
+    { code: '+27',  iso: 'za', name: 'South Africa' },
   ];
+
+  openDialDropdown: string | null = null;
+
+  @HostListener('document:click')
+  closeAllDials(): void { this.openDialDropdown = null; }
+
+  toggleDial(key: string): void {
+    this.openDialDropdown = this.openDialDropdown === key ? null : key;
+  }
+
+  pickDial(contact: any, code: string, iso: string): void {
+    contact.mobileCode = code;
+    contact.mobileCodeIso = iso;
+    this.openDialDropdown = null;
+  }
+
+  contactIso(contact: any): string {
+    const match = this.countryDialCodes.find(c => c.code === (contact?.mobileCode ?? '+91'));
+    return contact?.mobileCodeIso || match?.iso || 'in';
+  }
+
+  /** Format title+first+last as "Ms. Tisya Pawar", falling back to legacy contactPerson */
+  formatAddrContactName(cp: any): string {
+    if (!cp) return '';
+    const title = cp.title ? cp.title.replace(/\.?$/, '.') : '';
+    const name = [title, cp.firstName, cp.lastName].filter(Boolean).join(' ').trim();
+    return name || cp.contactPerson || '';
+  }
 
   countries: string[] = [
     'India',
@@ -154,7 +215,11 @@ export class VendorComponent implements OnInit {
 
   /* ─── Empty address ─── */
   private emptyAddrContact() {
-    return { contactPerson: '', department: '', email: '', mobile: '', mobileCode: '+91' };
+    return {
+      contactPerson: '',   // kept for backward compat
+      title: '', firstName: '', lastName: '',
+      department: '', email: '', mobile: '', mobileCode: '+91', mobileCodeIso: 'in'
+    };
   }
 
   addAddrContact(addr: any) {
@@ -217,10 +282,15 @@ export class VendorComponent implements OnInit {
   private normalizeAddr(addr: any): VendorAddress {
     if (!addr) return this.emptyAddr();
     const contacts = Array.isArray(addr.contacts) && addr.contacts.length
-      ? addr.contacts
-      : [{ contactPerson: addr.contactPerson || '', department: addr.department || '',
-           email: addr.email || '', mobile: addr.mobile || '',
-           mobileCode: addr.mobileCode || '+91' }];
+      ? addr.contacts.map((c: any) => ({
+          contactPerson: c.contactPerson || '',
+          title: c.title || '', firstName: c.firstName || '', lastName: c.lastName || '',
+          department: c.department || '', email: c.email || '',
+          mobile: c.mobile || '', mobileCode: c.mobileCode || '+91', mobileCodeIso: c.mobileCodeIso || 'in'
+        }))
+      : [{ contactPerson: addr.contactPerson || '', title: '', firstName: '', lastName: '',
+           department: addr.department || '', email: addr.email || '',
+           mobile: addr.mobile || '', mobileCode: addr.mobileCode || '+91', mobileCodeIso: 'in' }];
     return {
       line1: addr.line1 || addr.street || '',
       line2: addr.line2 || addr.area || '',
@@ -353,6 +423,21 @@ export class VendorComponent implements OnInit {
     const r = new FileReader();
     r.onload = () => cb({ name: file.name, type: file.type, data: r.result as string });
     r.readAsDataURL(file);
+  }
+
+  /* ─── GST Auto-Verify (same logic as customers module) ─── */
+  autoVerifyGST(addr: any): void {
+    const gstin = (addr.gstin || '').trim().toUpperCase();
+    addr.gstin = gstin;
+    const gstRegex = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
+    if (!gstin) {
+      addr.gstVerified = false; addr.gstInvalidFormat = false;
+    } else if (gstin.length >= 15) {
+      addr.gstVerified = gstRegex.test(gstin);
+      addr.gstInvalidFormat = !gstRegex.test(gstin);
+    } else {
+      addr.gstVerified = false; addr.gstInvalidFormat = false;
+    }
   }
 
   onGstFileSelect(e: any)  { this.readFile(e.target.files[0], f => this.newVendor.gstFile  = f); }
@@ -520,7 +605,7 @@ export class VendorComponent implements OnInit {
         [`${prefix} Pincode`]: a?.pincode || '',
         [`${prefix} Country`]: a?.country || '',
         [`${prefix} GSTIN`]: a?.gstin || '',
-        [`${prefix} Contact`]: cp?.contactPerson || a?.contactPerson || '',
+        [`${prefix} Contact`]: this.formatAddrContactName(cp) || a?.contactPerson || '',
         [`${prefix} Department`]: cp?.department || a?.department || '',
         [`${prefix} Email`]: cp?.email || a?.email || '',
         [`${prefix} Mobile`]: cp?.mobile || a?.mobile || '',

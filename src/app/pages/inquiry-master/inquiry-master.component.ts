@@ -57,6 +57,7 @@ interface InquiryRecord {
   customerName: string;
   customerPhone?: string;
   customerPhoneCode?: string;
+  customerPhoneCodeIso?: string;
   email?: string;
   mobile?: string;
 
@@ -111,6 +112,8 @@ export class InquiryMasterComponent {
   showViewModal = false;
   showFollowUpModal = false;
   showLostModal = false;
+  showVerificationPopup = false;
+  verificationPopupIsNewCustomer = false; // true = brand-new, false = existing but GST unverified
 
   isEditing = false;
   currentInquiry: InquiryRecord | null = null;
@@ -126,11 +129,58 @@ export class InquiryMasterComponent {
   inventory: any[] = [];
   contactOptions: Array<{ key: 'primary' | 'secondary'; label: string }> = [];
   selectedContactRole: 'primary' | 'secondary' = 'primary';
+  companyNameSuggestions: string[] = [];
 
-  countryCodes: string[] = [
-    '+91', '+1', '+44', '+971', '+966', '+65', '+61', '+49', '+86', '+81',
-    '+60', '+62', '+880', '+92', '+94', '+977', '+66', '+84', '+55', '+27'
+  /* ── Dial codes — same list as customers module ── */
+  countryDialCodes = [
+    { code: '+91',  iso: 'in', name: 'India' },
+    { code: '+880', iso: 'bd', name: 'Bangladesh' },
+    { code: '+977', iso: 'np', name: 'Nepal' },
+    { code: '+92',  iso: 'pk', name: 'Pakistan' },
+    { code: '+94',  iso: 'lk', name: 'Sri Lanka' },
+    { code: '+1',   iso: 'us', name: 'United States' },
+    { code: '+1',   iso: 'ca', name: 'Canada' },
+    { code: '+44',  iso: 'gb', name: 'United Kingdom' },
+    { code: '+971', iso: 'ae', name: 'UAE' },
+    { code: '+966', iso: 'sa', name: 'Saudi Arabia' },
+    { code: '+974', iso: 'qa', name: 'Qatar' },
+    { code: '+968', iso: 'om', name: 'Oman' },
+    { code: '+965', iso: 'kw', name: 'Kuwait' },
+    { code: '+65',  iso: 'sg', name: 'Singapore' },
+    { code: '+60',  iso: 'my', name: 'Malaysia' },
+    { code: '+62',  iso: 'id', name: 'Indonesia' },
+    { code: '+66',  iso: 'th', name: 'Thailand' },
+    { code: '+61',  iso: 'au', name: 'Australia' },
+    { code: '+86',  iso: 'cn', name: 'China' },
+    { code: '+81',  iso: 'jp', name: 'Japan' },
+    { code: '+49',  iso: 'de', name: 'Germany' },
+    { code: '+33',  iso: 'fr', name: 'France' },
+    { code: '+55',  iso: 'br', name: 'Brazil' },
+    { code: '+27',  iso: 'za', name: 'South Africa' },
   ];
+
+  openDialDropdown: string | null = null;
+
+  @HostListener('document:click')
+  closeAllDials(): void { this.openDialDropdown = null; }
+
+  toggleInqDial(): void {
+    this.openDialDropdown = this.openDialDropdown === 'inq' ? null : 'inq';
+  }
+
+  pickInqDial(code: string, iso: string): void {
+    if (!this.currentInquiry) return;
+    this.currentInquiry.customerPhoneCode    = code;
+    this.currentInquiry.customerPhoneCodeIso = iso;
+    this.openDialDropdown = null;
+  }
+
+  getInqPhoneIso(): string {
+    if (!this.currentInquiry) return 'in';
+    return this.currentInquiry.customerPhoneCodeIso
+      || this.countryDialCodes.find(c => c.code === (this.currentInquiry!.customerPhoneCode ?? '+91'))?.iso
+      || 'in';
+  }
   indianStates: string[] = [
     'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh',
     'Goa', 'Gujarat', 'Haryana', 'Himachal Pradesh', 'Jharkhand', 'Karnataka',
@@ -181,6 +231,33 @@ export class InquiryMasterComponent {
     ) || null;
     this.router.navigate(['/purchase-order'], { state: { inquiry: inq, offer } });
   }
+  goToRFQ(item?: any) {
+    const inq = this.currentInquiry;
+    // Look up vendor from inventory so RFQ can auto-fill vendor details
+    const invItem = this.inventory.find((inv: any) => {
+      const invName = (inv.displayName || inv.name || '').toLowerCase().trim();
+      const selName = (item?.productName || '').toLowerCase().trim();
+      return selName && invName === selName;
+    });
+    const vendorName = invItem?.vendorName || '';
+
+    // For saved inquiries use the real ID; for new (unsaved) use the preview ID shown in the form
+    const resolvedInquiryId = inq?.id
+      ? this.getDisplayInquiryId(inq.id)
+      : (this.previewInquiryId || '');
+
+    this.router.navigate(['/rfq'], {
+      state: {
+        fromInquiry: true,
+        inquiryId: resolvedInquiryId,
+        inquiryNumericId: inq?.id ?? null,
+        companyName: inq?.companyName || '',
+        vendorName,
+        item
+      }
+    });
+  }
+
   ngOnInit() {
     this.loadInquiries();
     this.loadCustomers();
@@ -199,7 +276,9 @@ export class InquiryMasterComponent {
      COMPANY SELECTION
   ----------------------------- */
   private buildFullName(contact: any): string {
-    return contact ? [contact.title, contact.firstName, contact.lastName].filter(Boolean).join(' ') : '';
+    if (!contact) return '';
+    const title = contact.title ? contact.title.replace(/\.?$/, '.') : '';
+    return [title, contact.firstName, contact.lastName].filter(Boolean).join(' ').trim();
   }
 
   private populateContactOptions(companyName?: string): void {
@@ -250,6 +329,44 @@ export class InquiryMasterComponent {
 
     this.currentInquiry.billing  = customer.billing  ? { ...customer.billing  } : {};
     this.currentInquiry.shipping = customer.shipping ? { ...customer.shipping } : {};
+  }
+
+  /** Returns true when the typed company name is NOT in the customer database */
+  isNewCustomer(): boolean {
+    const name = this.currentInquiry?.companyName?.trim();
+    if (!name) return false;
+    return !this.customers.find((c: any) => c.companyName === name);
+  }
+
+  /** Filter company name suggestions as the user types */
+  onCompanyNameInput(): void {
+    if (!this.currentInquiry) return;
+    const term = (this.currentInquiry.companyName || '').toLowerCase().trim();
+    if (!term) {
+      this.companyNameSuggestions = [];
+      this.contactOptions = [];
+      return;
+    }
+    this.companyNameSuggestions = this.customers
+      .map((c: any) => c.companyName as string)
+      .filter(name => name && name.toLowerCase().includes(term))
+      .slice(0, 8);
+  }
+
+  /** Pick a company from the autocomplete suggestion list */
+  pickCompany(name: string): void {
+    if (!this.currentInquiry) return;
+    this.currentInquiry.companyName = name;
+    this.companyNameSuggestions = [];
+    this.onCompanySelect(); // auto-fill contact, address, etc.
+  }
+
+  /** On blur — if exact match in DB, auto-populate; always hide suggestions */
+  onCompanyBlur(): void {
+    setTimeout(() => {
+      this.companyNameSuggestions = [];
+      this.onCompanySelect(); // safe no-op when no match
+    }, 200);
   }
 
   /* -----------------------------
@@ -393,6 +510,17 @@ export class InquiryMasterComponent {
     return `INQ-${String(num).padStart(3, '0')}`;
   }
 
+  getSpecEntries(it: any): { label: string; value: string }[] {
+    const map: Record<string, string> = {
+      form: 'Form', make: 'Make', density: 'Density', thickness: 'Thickness',
+      fsk: 'FSK', size: 'Size', grade: 'Grade', alloy: 'Alloy',
+      temper: 'Temper', nb: 'NB', maxTemp: 'Max Temp', color: 'Color'
+    };
+    return Object.entries(map)
+      .filter(([k]) => it[k] && it[k] !== '')
+      .map(([k, label]) => ({ label, value: it[k] }));
+  }
+
   onCustomerContactChange() {
     this.applySelectedContactDetails();
   }
@@ -483,6 +611,7 @@ export class InquiryMasterComponent {
       customerName: '',
       customerPhone: '',
       customerPhoneCode: '+91',
+      customerPhoneCodeIso: 'in',
       email: '',
       officeAddress: '',
       inquiryTypeCustom: '',
@@ -576,6 +705,21 @@ export class InquiryMasterComponent {
 
     await this.loadInquiries();
     this.showAddEditModal = false;
+
+    if (!this.isEditing) {
+      const savedCompany = this.currentInquiry?.companyName;
+      const customer = this.customers.find((c: any) => c.companyName === savedCompany);
+      if (!customer) {
+        // Completely new customer — not in database yet
+        this.verificationPopupIsNewCustomer = true;
+        this.showVerificationPopup = true;
+      } else if (!customer.billing?.gstVerified) {
+        // Existing customer but GST not verified
+        this.verificationPopupIsNewCustomer = false;
+        this.showVerificationPopup = true;
+      }
+    }
+
     this.currentInquiry = null;
   }
 
