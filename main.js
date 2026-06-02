@@ -5,8 +5,8 @@ const path = require('path');
 let mainWindow;
 
 // Configure auto-updater
-autoUpdater.autoDownload = false;
-autoUpdater.autoInstallOnAppQuit = true;
+autoUpdater.autoDownload = true;       // download update silently in background
+autoUpdater.autoInstallOnAppQuit = true; // install when user quits
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -45,13 +45,10 @@ function createWindow() {
     mainWindow = null;
   });
 
-  // Check for updates after window loads (only in production)
+  // Check for updates on every startup (only in production)
   if (process.env.NODE_ENV !== 'development') {
     mainWindow.webContents.on('did-finish-load', () => {
-      // Check for updates 5 seconds after app loads
-      setTimeout(() => {
-        checkForUpdates();
-      }, 5000);
+      setTimeout(() => checkForUpdates(), 3000);
     });
   }
 }
@@ -139,14 +136,7 @@ autoUpdater.on('checking-for-update', () => {
 
 autoUpdater.on('update-available', (info) => {
   console.log('Update available:', info.version);
-
-  // Notify user that update is available
-  if (mainWindow) {
-    mainWindow.webContents.send('update-available', info.version);
-  }
-
-  // Automatically download the update
-  autoUpdater.downloadUpdate();
+  // autoDownload: true handles the download automatically
 });
 
 autoUpdater.on('update-not-available', () => {
@@ -184,11 +174,9 @@ app.whenReady().then(() => {
   createWindow();
   createMenu();
 
-  // On macOS, check for updates periodically (every 4 hours)
-  if (process.platform === 'darwin' && process.env.NODE_ENV !== 'development') {
-    setInterval(() => {
-      checkForUpdates();
-    }, 4 * 60 * 60 * 1000); // 4 hours
+  // Also check for updates periodically every 4 hours (all platforms)
+  if (process.env.NODE_ENV !== 'development') {
+    setInterval(() => checkForUpdates(), 4 * 60 * 60 * 1000);
   }
 });
 
