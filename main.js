@@ -33,6 +33,12 @@ function createWindow() {
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
     mainWindow.maximize();
+    dialog.showMessageBox(mainWindow, {
+      type: 'info',
+      title: 'Important Notice',
+      message: '💸 Please pay the developer!',
+      buttons: ['OK I Will', 'Maybe Later']
+    });
   });
 
   // Only open DevTools in development
