@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu } = require('electron');
+const { app, BrowserWindow, Menu, dialog } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const path = require('path');
 
@@ -136,7 +136,13 @@ autoUpdater.on('checking-for-update', () => {
 
 autoUpdater.on('update-available', (info) => {
   console.log('Update available:', info.version);
-  // autoDownload: true handles the download automatically
+  dialog.showMessageBox(mainWindow, {
+    type: 'info',
+    title: 'Update Available',
+    message: `Version ${info.version} is available.`,
+    detail: 'Downloading update in the background. You will be notified when it is ready.',
+    buttons: ['OK']
+  });
 });
 
 autoUpdater.on('update-not-available', () => {
@@ -144,25 +150,22 @@ autoUpdater.on('update-not-available', () => {
 });
 
 autoUpdater.on('download-progress', (progressObj) => {
-  const message = `Download speed: ${progressObj.bytesPerSecond} - Downloaded ${progressObj.percent}%`;
-  console.log(message);
-
-  // Send progress to renderer if you want to show a progress bar
-  if (mainWindow) {
-    mainWindow.webContents.send('download-progress', progressObj.percent);
-  }
+  console.log(`Downloading update: ${Math.round(progressObj.percent)}%`);
 });
 
 autoUpdater.on('update-downloaded', (info) => {
   console.log('Update downloaded:', info.version);
-
-  // Notify user that update is ready to install
-  if (mainWindow) {
-    mainWindow.webContents.send('update-downloaded', info.version);
-  }
-
-  // Install update on next app restart
-  // You can also call autoUpdater.quitAndInstall() to install immediately
+  dialog.showMessageBox(mainWindow, {
+    type: 'info',
+    title: 'Update Ready',
+    message: `Version ${info.version} has been downloaded.`,
+    detail: 'The update will be installed automatically when you quit the app.',
+    buttons: ['Quit & Install Now', 'Later']
+  }).then(result => {
+    if (result.response === 0) {
+      autoUpdater.quitAndInstall();
+    }
+  });
 });
 
 autoUpdater.on('error', (err) => {
