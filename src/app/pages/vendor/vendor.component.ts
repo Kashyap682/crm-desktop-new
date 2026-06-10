@@ -2,7 +2,7 @@ import { Component, OnInit, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import * as XLSX from 'xlsx';
-import { DBService } from '../../service/db.service';
+import { ApiService } from '../../service/api.service';
 
 interface FileAttachment {
   name: string;
@@ -30,7 +30,7 @@ interface VendorAddress {
 }
 
 interface Vendor {
-  id?: number;
+  id?: string;
   vendorId?: string;
   vendorVertical?: string;
   vendorType?: string;        // Manufacturer | Dealer/Trader
@@ -119,7 +119,7 @@ export class VendorComponent implements OnInit {
     'Jammu and Kashmir', 'Ladakh', 'Lakshadweep', 'Puducherry'
   ];
 
-  /* ─── Country dial codes (identical to customers module) ─── */
+  /* ─── Country dial codes ─── */
   countryDialCodes = [
     { code: '+91',  iso: 'in', name: 'India' },
     { code: '+880', iso: 'bd', name: 'Bangladesh' },
@@ -209,9 +209,83 @@ export class VendorComponent implements OnInit {
     } catch (_) { /* offline or API error */ }
   }
 
-  constructor(private dbService: DBService) { }
+  constructor(private apiService: ApiService) { }
 
   ngOnInit() { this.loadVendors(); }
+
+  // ── snake_case ↔ camelCase mapping ──────────────────────────
+
+  /** Serialize camelCase vendor to snake_case PostgREST row */
+  private toDbRow(v: any): any {
+    return {
+      ...(v.id ? { id: v.id } : {}),
+      vendor_ref:            v.vendorId             ?? null,
+      vendor_vertical:       v.vendorVertical        ?? null,
+      vendor_type:           v.vendorType            ?? null,
+      vendor_category:       v.vendorCategory        ?? null,
+      company_name:          v.companyName           ?? '',
+      brand_name:            v.brandName             ?? null,
+      category:              v.category              ?? null,
+      location:              v.location              ?? null,
+      contact_person:        v.contactPerson         ?? null,
+      website:               v.website               ?? null,
+      email:                 v.email                 ?? null,
+      mobile:                v.mobile                ?? null,
+      gst:                   v.gst                   ?? null,
+      pan:                   v.pan                   ?? null,
+      msme:                  v.msme                  ?? null,
+      payment_terms:         v.paymentTerms          ?? null,
+      bank_ifsc:             v.bankIfsc              ?? null,
+      gst_file:              v.gstFile               ?? null,
+      pan_file:              v.panFile               ?? null,
+      msme_file:             v.msmeFile              ?? null,
+      cancelled_cheque_file: v.cancelledChequeFile   ?? null,
+      office_address:        v.officeAddress         ?? null,
+      office_address2:       v.officeAddress2        ?? null,
+      billing:               v.billing               ?? null,
+      billing2:              v.billing2              ?? null,
+      shipping:              v.shipping              ?? null,
+      primary_contact:       v.primaryContact        ?? null,
+      datasheets:            v.datasheets            ?? null,
+      products:              v.products              ?? null,
+    };
+  }
+
+  /** Deserialize snake_case PostgREST row to camelCase vendor */
+  private fromDbRow(row: any): any {
+    return {
+      id:                  row.id,
+      vendorId:            row.vendor_ref            || '',
+      vendorVertical:      row.vendor_vertical       || '',
+      vendorType:          row.vendor_type           || '',
+      vendorCategory:      row.vendor_category       || '',
+      companyName:         row.company_name          || '',
+      brandName:           row.brand_name            || '',
+      category:            row.category              || '',
+      location:            row.location              || '',
+      contactPerson:       row.contact_person        || '',
+      website:             row.website               || '',
+      email:               row.email                 || '',
+      mobile:              row.mobile                || '',
+      gst:                 row.gst                   || '',
+      pan:                 row.pan                   || '',
+      msme:                row.msme                  || '',
+      paymentTerms:        row.payment_terms         || '',
+      bankIfsc:            row.bank_ifsc             || '',
+      gstFile:             row.gst_file              || undefined,
+      panFile:             row.pan_file              || undefined,
+      msmeFile:            row.msme_file             || undefined,
+      cancelledChequeFile: row.cancelled_cheque_file || undefined,
+      officeAddress:       this.normalizeAddr(row.office_address),
+      officeAddress2:      row.office_address2 ? this.normalizeAddr(row.office_address2) : null,
+      billing:             this.normalizeAddr(row.billing),
+      billing2:            row.billing2 ? this.normalizeAddr(row.billing2) : null,
+      shipping:            row.shipping || { street: '', area: '', city: '', state: '', pincode: '', country: 'India' },
+      primaryContact:      row.primary_contact || { firstName: '', lastName: '', mobile: '', email: '', location: '', remarks: '' },
+      datasheets:          row.datasheets || [],
+      products:            row.products   || [],
+    };
+  }
 
   /* ─── Empty address ─── */
   private emptyAddrContact() {
@@ -320,15 +394,8 @@ export class VendorComponent implements OnInit {
 
   /* ─── Load ─── */
   async loadVendors() {
-    const raw = await this.dbService.getAll('vendors');
-    this.vendors = raw.map((v: any) => ({
-      ...v,
-      officeAddress: this.normalizeAddr(v.officeAddress || v.billing),
-      billing: this.normalizeAddr(v.billing),
-      primaryContact: v.primaryContact || { firstName: '', lastName: '', mobile: '', email: '', location: '', remarks: '' },
-      products: v.products || [],
-      datasheets: v.datasheets || []
-    }));
+    const rows = await this.apiService.getAll('vendors');
+    this.vendors = rows.map((row: any) => this.fromDbRow(row));
     this.filteredVendors = [...this.vendors];
   }
 
@@ -385,10 +452,10 @@ export class VendorComponent implements OnInit {
   }
 
   /* ─── Extra address toggles ─── */
-  addOffice2()  { this.showOffice2  = true; this.newVendor.officeAddress2 = this.emptyAddr(); }
-  removeOffice2() { this.showOffice2 = false; this.newVendor.officeAddress2 = null; }
-  addBilling2() { this.showBilling2 = true;  this.newVendor.billing2 = this.emptyAddr(); }
-  removeBilling2() { this.showBilling2 = false; this.newVendor.billing2 = null; }
+  addOffice2()    { this.showOffice2  = true;  this.newVendor.officeAddress2 = this.emptyAddr(); }
+  removeOffice2() { this.showOffice2  = false; this.newVendor.officeAddress2 = null; }
+  addBilling2()   { this.showBilling2 = true;  this.newVendor.billing2       = this.emptyAddr(); }
+  removeBilling2(){ this.showBilling2 = false; this.newVendor.billing2       = null; }
 
   /* ─── Products ─── */
   addProduct() {
@@ -403,7 +470,7 @@ export class VendorComponent implements OnInit {
 
   /* ─── Save ─── */
   async submitForm() {
-    await this.dbService.put('vendors', this.newVendor);
+    await this.apiService.put('vendors', this.toDbRow(this.newVendor));
     this.cancelModal();
     await this.loadVendors();
   }
@@ -412,9 +479,8 @@ export class VendorComponent implements OnInit {
   async deleteVendor(idx: number) {
     if (!confirm('Delete this vendor?')) return;
     const vendor = this.filteredVendors[idx];
-    const key = vendor.id ?? vendor.vendorId;
-    if (!key) return;
-    await this.dbService.delete('vendors', key);
+    if (!vendor.id) return;
+    await this.apiService.delete('vendors', vendor.id);
     await this.loadVendors();
   }
 
@@ -425,7 +491,7 @@ export class VendorComponent implements OnInit {
     r.readAsDataURL(file);
   }
 
-  /* ─── GST Auto-Verify (same logic as customers module) ─── */
+  /* ─── GST Auto-Verify ─── */
   autoVerifyGST(addr: any): void {
     const gstin = (addr.gstin || '').trim().toUpperCase();
     addr.gstin = gstin;
@@ -471,27 +537,27 @@ export class VendorComponent implements OnInit {
     if (!file) return;
     this.readFile(file, async f => {
       vendor[key] = f;
-      await this.dbService.put('vendors', vendor);
+      await this.apiService.put('vendors', this.toDbRow(vendor));
     });
   }
 
   async removeGSTFile(vendor: any) {
     if (!confirm('Remove GST document?')) return;
     vendor.gstFile = undefined;
-    await this.dbService.put('vendors', vendor);
+    await this.apiService.put('vendors', this.toDbRow(vendor));
   }
 
   async removePanFile(vendor: any) {
     if (!confirm('Remove PAN document?')) return;
     vendor.panFile = undefined;
-    await this.dbService.put('vendors', vendor);
+    await this.apiService.put('vendors', this.toDbRow(vendor));
   }
 
   async removeMSMEFile(vendor: any) {
     if (!confirm('Remove MSME document?')) return;
     vendor.msmeFile = undefined;
     vendor.msme = '';
-    await this.dbService.put('vendors', vendor);
+    await this.apiService.put('vendors', this.toDbRow(vendor));
   }
 
   /* ─── Excel ─── */
@@ -557,12 +623,13 @@ export class VendorComponent implements OnInit {
         if (!isNaN(n)) last = Math.max(last, n);
       }
     });
+
     for (let i = 1; i < rows.length; i++) {
       const r = toObj(rows[i]);
       if (!r['Company Name']) continue;
       last++;
       const officeAddr = addrFromRow(r, 'Office Address') ?? this.emptyAddr();
-      await this.dbService.add('vendors', {
+      const vendor = {
         vendorId: normalizeVendorId(r['Vendor ID']) || `VEN-${last.toString().padStart(3, '0')}`,
         vendorType: r['Vendor Type'] || '',
         companyName: r['Company Name'] || '',
@@ -589,7 +656,8 @@ export class VendorComponent implements OnInit {
           remarks: r['Primary Contact Remarks'] || ''
         },
         datasheets: []
-      });
+      };
+      await this.apiService.add('vendors', this.toDbRow(vendor));
     }
     await this.loadVendors();
   }

@@ -5,7 +5,7 @@ read -p "Are you sure? (yes/no): " confirm
 
 podman pod stop crm-pod 2>/dev/null || true
 podman pod rm crm-pod 2>/dev/null || true
-podman stop crm-pgadmin 2>/dev/null || true
-podman rm crm-pgadmin 2>/dev/null || true
+podman stop crm-pgadmin crm-auth 2>/dev/null || true
+podman rm crm-pgadmin crm-auth 2>/dev/null || true
 podman volume rm crm-pgdata crm-pgadmin-data 2>/dev/null || true
 echo "✅ All CRM containers and data removed."

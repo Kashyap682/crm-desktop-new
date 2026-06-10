@@ -1,61 +1,39 @@
-import { Component, OnInit, HostListener } from '@angular/core';
+import { Component, OnInit, HostListener, DoCheck } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { DBService } from '../../service/db.service';
+import { ApiService } from '../../service/api.service';
 import { jsPDF } from 'jspdf';
-/* =============================
-   INTERFACES
-============================= */
+
+interface Payment {
+  id?: string;
+  paymentId: string;
+  customerName: string;
+  customerId?: string;
+  companyName: string;
+  mobile: string;
+  email: string;
+  gstin: string;
+  pan: string;
+  invoiceNo: string;
+  invoiceAmount: number;
+  amount: number;
+  outstandingBefore: number;
+  outstandingAfter: number;
+  date: string;
+  status: 'Pending' | 'Success' | 'Failed';
+}
 
 interface Customer {
-  id: number;
+  id: string;
   name: string;
   companyName?: string;
   mobile?: string;
   email?: string;
   gstin?: string;
   pan?: string;
+  primaryContact?: any;
+  officeAddress?: any;
 }
-
-// interface Payment {
-//   id?: number;
-//   customerName: string;
-//   customerId?: number;
-//   companyName?: string;
-//   mobile?: string;
-//   email?: string;
-//   gstin?: string;
-//   pan?: string;
-//   paymentId: string;
-//   date: string;
-//   amount: number;
-//   status: string;
-// }
-
-interface Payment {
-  companyName: string;
-  mobile: string;
-  email: string;
-  gstin: string;
-  pan: string;
-  id?: number;                 // internal DB key
-  paymentId: string;           // PAY/YYYY/XXXX
-
-  customerName: string;
-  customerId?: number;
-
-  invoiceNo: string;           // 🔗 LINK
-  invoiceAmount: number;
-
-  amount: number;
-
-  outstandingBefore: number;
-  outstandingAfter: number;
-
-  date: string;
-  status: 'Pending' | 'Success' | 'Failed';
-}
-
 
 @Component({
   selector: 'app-payments',
@@ -64,7 +42,7 @@ interface Payment {
   templateUrl: './payments.component.html',
   styleUrls: ['./payments.component.css']
 })
-export class PaymentsComponent implements OnInit {
+export class PaymentsComponent implements OnInit, DoCheck {
 
   payments: Payment[] = [];
   customers: Customer[] = [];
@@ -78,7 +56,7 @@ export class PaymentsComponent implements OnInit {
 
   newPayment: Payment = this.getEmptyPayment();
 
-  constructor(private dbService: DBService) { }
+  constructor(private apiService: ApiService) { }
 
   activeMenuId: any = null;
 
@@ -87,50 +65,112 @@ export class PaymentsComponent implements OnInit {
     this.activeMenuId = this.activeMenuId === id ? null : id;
   }
 
-  closeActionMenu() {
-    this.activeMenuId = null;
-  }
+  closeActionMenu() { this.activeMenuId = null; }
 
   @HostListener('document:click', ['$event'])
-  onDocumentClick(event: Event) {
-    this.activeMenuId = null;
+  onDocumentClick(event: Event) { this.activeMenuId = null; }
+
+  // ── Mapping helpers ──────────────────────────────────────
+
+  private toDbRow(p: Payment): any {
+    const row: any = {
+      payment_id:        p.paymentId        || null,
+      payment_ref:       p.paymentId        || null,
+      customer_name:     p.customerName     || null,
+      company_name:      p.companyName      || null,
+      mobile:            p.mobile           || null,
+      email:             p.email            || null,
+      gstin:             p.gstin            || null,
+      pan:               p.pan              || null,
+      invoice_no:        p.invoiceNo        || null,
+      invoice_amount:    p.invoiceAmount    ?? 0,
+      amount:            p.amount           ?? 0,
+      outstanding_before: p.outstandingBefore ?? 0,
+      outstanding_after:  p.outstandingAfter  ?? 0,
+      date:              p.date             || null,
+      status:            p.status           || 'Pending',
+    };
+    if (p.id) row.id = p.id;
+    return row;
   }
 
-
-  ngOnInit() {
-    this.loadCustomers();
-    this.loadInvoices();
-    this.loadPayments();
+  private fromDbRow(row: any): Payment {
+    return {
+      id:               row.id,
+      paymentId:        row.payment_id       || row.payment_ref || '',
+      customerName:     row.customer_name    || '',
+      customerId:       row.customer_id      || '',
+      companyName:      row.company_name     || '',
+      mobile:           row.mobile           || '',
+      email:            row.email            || '',
+      gstin:            row.gstin            || '',
+      pan:              row.pan              || '',
+      invoiceNo:        row.invoice_no       || '',
+      invoiceAmount:    row.invoice_amount   ?? 0,
+      amount:           row.amount           ?? 0,
+      outstandingBefore: row.outstanding_before ?? 0,
+      outstandingAfter:  row.outstanding_after  ?? 0,
+      date:             row.date             || '',
+      status:           (row.status as any)  || 'Pending',
+    };
   }
 
-
-  /* =============================
-     LOAD DATA
-  ============================= */
-
-  loadInvoices() {
-    this.dbService.getAll('invoices').then(data => {
-      this.invoices = data || [];
-    });
+  private mapCustomer(row: any): Customer {
+    return {
+      id:             row.id,
+      companyName:    row.company_name    || '',
+      name:           row.name            || '',
+      gstin:          row.gstin           || '',
+      pan:            row.pan             || '',
+      mobile:         row.mobile          || '',
+      email:          row.email           || '',
+      primaryContact: row.primary_contact || {},
+      officeAddress:  row.office_address  || {},
+    };
   }
 
-  loadPayments() {
-    this.dbService.getAll('payments').then(data => {
-      this.payments = data || [];
+  private mapInvoice(row: any): any {
+    return {
+      id:           row.id,
+      invoiceNo:    row.invoice_ref || row.invoice_no || '',
+      grandTotal:   row.grand_total ?? 0,
+      billTo:       row.bill_to     || {},
+      companyName:  row.company_name || row.bill_to?.name || '',
+      items:        Array.isArray(row.items) ? row.items : [],
+      status:       row.status      || 'Pending',
+    };
+  }
+
+  // ── Lifecycle ────────────────────────────────────────────
+
+  async ngOnInit() {
+    await Promise.all([
+      this.loadCustomers(),
+      this.loadInvoices(),
+      this.loadPayments(),
+    ]);
+  }
+
+  async loadInvoices() {
+    try {
+      const rows = await this.apiService.getAll('invoices');
+      this.invoices = rows.map((r: any) => this.mapInvoice(r));
+    } catch { this.invoices = []; }
+  }
+
+  async loadPayments() {
+    try {
+      const rows = await this.apiService.getAll('payments');
+      this.payments = rows.map((r: any) => this.fromDbRow(r));
       this.sortPayments();
-    });
+    } catch { this.payments = []; }
   }
-  // loadPayments() {
-  //   this.dbService.getAll('payments').then((data: Payment[]) => {
-  //     this.payments = data || [];
-  //     this.sortPayments();
-  //   });
-  // }
 
-  loadCustomers() {
-    this.dbService.getAll('customers').then((data: Customer[]) => {
-      this.customers = data || [];
-    });
+  async loadCustomers() {
+    try {
+      const rows = await this.apiService.getAll('customers');
+      this.customers = rows.map((r: any) => this.mapCustomer(r));
+    } catch { this.customers = []; }
   }
 
   /* =============================
@@ -138,36 +178,17 @@ export class PaymentsComponent implements OnInit {
   ============================= */
   getEmptyPayment(): Payment {
     return {
-      customerName: '',
-      customerId: undefined,
-      companyName: '',
-      mobile: '',
-      email: '',
-      gstin: '',
-      pan: '',
-
-      paymentId: '',
-      invoiceNo: '',
-      invoiceAmount: 0,
-
-      amount: 0,
-
-      outstandingBefore: 0,
-      outstandingAfter: 0,
-
-      date: new Date().toISOString().slice(0, 10),
-      status: 'Pending'
+      customerName: '', customerId: undefined, companyName: '',
+      mobile: '', email: '', gstin: '', pan: '',
+      paymentId: '', invoiceNo: '', invoiceAmount: 0,
+      amount: 0, outstandingBefore: 0, outstandingAfter: 0,
+      date: new Date().toISOString().slice(0, 10), status: 'Pending'
     };
   }
 
-
   toggleForm(edit = false, index?: number) {
     this.showForm = !this.showForm;
-
-    if (!this.showForm) {
-      this.resetForm();
-      return;
-    }
+    if (!this.showForm) { this.resetForm(); return; }
 
     if (edit && index !== undefined) {
       this.isEditing = true;
@@ -188,25 +209,10 @@ export class PaymentsComponent implements OnInit {
   /* =============================
      CUSTOMER AUTO-FILL
   ============================= */
-
-  // onCustomerSelected(name: string) {
-  //   const customer = this.customers.find(c => c.name === name);
-  //   if (!customer) return;
-
-  //   this.newPayment.customerName = customer.name;
-  //   this.newPayment.customerId = customer.id;
-  //   this.newPayment.companyName = customer.companyName || '';
-  //   this.newPayment.mobile = customer.mobile || '';
-  //   this.newPayment.email = customer.email || '';
-  //   this.newPayment.gstin = customer.gstin || '';
-  //   this.newPayment.pan = customer.pan || '';
-  // }
   onCustomerSelected(companyName: string) {
-    // Find customer by company name
     const customer = this.customers.find(c => c.companyName === companyName);
     if (!customer) return;
 
-    // Autofill customer details
     this.newPayment.companyName = customer.companyName || '';
     this.newPayment.customerName = customer.name || '';
     this.newPayment.customerId = customer.id;
@@ -216,13 +222,11 @@ export class PaymentsComponent implements OnInit {
     this.newPayment.gstin = customer.gstin || c.officeAddress?.gstin || '';
     this.newPayment.pan = customer.pan || '';
 
-    // Reset invoice selection
     this.newPayment.invoiceNo = '';
     this.newPayment.invoiceAmount = 0;
     this.newPayment.outstandingBefore = 0;
     this.newPayment.outstandingAfter = 0;
 
-    // Filter invoices for this company
     this.filteredInvoices = this.invoices.filter(inv =>
       (inv.billTo?.name === companyName || inv.billTo?.name === customer.name || inv.companyName === companyName) &&
       this.getInvoiceOutstanding(inv.invoiceNo) > 0
@@ -234,87 +238,52 @@ export class PaymentsComponent implements OnInit {
     return firstItem ? `${inv.invoiceNo} | ${firstItem}` : inv.invoiceNo;
   }
 
-
-
   generatePaymentId(): string {
     const year = new Date().getFullYear();
-
-    // get all payments of this year
-    const yearPayments = this.payments.filter(p =>
-      p.paymentId?.startsWith(`PAY/${year}`)
-    );
-
+    const yearPayments = this.payments.filter(p => p.paymentId?.startsWith(`PAY/${year}`));
     const nextNumber = yearPayments.length + 1;
-
     return `PAY/${year}/${nextNumber.toString().padStart(4, '0')}`;
   }
-
 
   /* =============================
      SAVE PAYMENT
   ============================= */
-
-  // savePayment() {
-
-  //   if (!this.isEditing) {
-  //     this.newPayment.id = Date.now();            // internal DB id
-  //     this.newPayment.paymentId = this.generatePaymentId(); // 🔥 AUTO
-  //     this.payments.push({ ...this.newPayment });
-  //   } else if (this.editIndex !== null) {
-  //     this.payments[this.editIndex] = { ...this.newPayment };
-  //   }
-
-  //   // persist safely
-  //   this.payments.forEach(p => {
-  //     this.dbService.put('payments', p);
-  //   });
-
-  //   this.toggleForm();
-  //   this.sortPayments();
-  // }
-
-  savePayment() {
-
-    // ❌ prevent overpayment
+  async savePayment() {
     if (this.newPayment.amount > this.newPayment.outstandingBefore) {
       alert('Payment cannot exceed outstanding amount');
       return;
     }
 
-    // generate IDs on add
     if (!this.isEditing) {
-      this.newPayment.id = Date.now();
       this.newPayment.paymentId = this.generatePaymentId();
     }
 
-    // this.newPayment.status = 'Success';
+    try {
+      await this.apiService.put('payments', this.toDbRow(this.newPayment));
 
-    // save payment
-    this.dbService.put('payments', this.newPayment);
+      // Update invoice status — only confirmed (Success) payments reduce outstanding
+      const invoice = this.invoices.find(i => i.invoiceNo === this.newPayment.invoiceNo);
+      if (invoice) {
+        const newStatus = this.deriveInvoiceStatus(this.newPayment.invoiceNo);
+        if (newStatus !== invoice.status) {
+          invoice.status = newStatus;
+          try {
+            await this.apiService.put('invoices', { id: invoice.id, status: newStatus });
+          } catch { /* non-critical */ }
+        }
+      }
 
-    // 🔄 update invoice status
-    const remaining = this.getInvoiceOutstanding(this.newPayment.invoiceNo)
-      - this.newPayment.amount;
-
-    const invoice = this.invoices.find(
-      i => i.invoiceNo === this.newPayment.invoiceNo
-    );
-
-    if (invoice) {
-      invoice.status =
-        remaining <= 0 ? 'Paid' : 'Partially Paid';
-
-      this.dbService.put('invoices', invoice);
+      this.toggleForm();
+      await this.loadPayments();
+    } catch (error) {
+      console.error('❌ Failed to save payment:', error);
+      alert('❌ Failed to save payment');
     }
-
-    this.toggleForm();
-    this.loadPayments();
   }
 
   /* =============================
      SORT
   ============================= */
-
   get sortedPayments() {
     return [...this.payments].sort((a, b) => {
       const d1 = new Date(a.date).getTime();
@@ -330,37 +299,30 @@ export class PaymentsComponent implements OnInit {
   getInvoiceOutstanding(invoiceNo: string): number {
     const invoice = this.invoices.find(i => i.invoiceNo === invoiceNo);
     if (!invoice) return 0;
-
     const totalPaid = this.payments
       .filter(p => p.invoiceNo === invoiceNo && p.status === 'Success')
       .reduce((sum, p) => sum + Number(p.amount), 0);
-
     return Number(invoice.grandTotal) - totalPaid;
   }
 
-  // onInvoiceSelected() {
-  //   const invoice = this.invoices.find(
-  //     i => i.invoiceNo === this.newPayment.invoiceNo
-  //   );
-  //   if (!invoice) return;
-
-  //   const outstanding = this.getInvoiceOutstanding(invoice.invoiceNo);
-
-  //   this.newPayment.invoiceAmount = invoice.grandTotal;
-  //   this.newPayment.outstandingBefore = outstanding;
-  //   this.newPayment.amount = outstanding; // default full payment
-  //   this.newPayment.outstandingAfter = 0;
-  // }
+  /**
+   * Derive the correct invoice status from confirmed (Success) payments only.
+   * Pending payments don't count — they haven't cleared yet.
+   */
+  deriveInvoiceStatus(invoiceNo: string): 'Paid' | 'Partially Paid' | 'Pending' {
+    const invoice = this.invoices.find(i => i.invoiceNo === invoiceNo);
+    if (!invoice) return 'Pending';
+    const totalPaid = this.payments
+      .filter(p => p.invoiceNo === invoiceNo && p.status === 'Success')
+      .reduce((sum, p) => sum + Number(p.amount), 0);
+    if (totalPaid <= 0) return 'Pending';
+    return totalPaid >= Number(invoice.grandTotal) ? 'Paid' : 'Partially Paid';
+  }
 
   onInvoiceSelected() {
-    const invoice = this.filteredInvoices.find(
-      i => i.invoiceNo === this.newPayment.invoiceNo
-    );
-
+    const invoice = this.filteredInvoices.find(i => i.invoiceNo === this.newPayment.invoiceNo);
     if (!invoice) return;
-
     const outstanding = this.getInvoiceOutstanding(invoice.invoiceNo);
-
     this.newPayment.invoiceAmount = invoice.grandTotal;
     this.newPayment.outstandingBefore = outstanding;
     this.newPayment.amount = outstanding;
@@ -369,43 +331,32 @@ export class PaymentsComponent implements OnInit {
 
   ngDoCheck() {
     if (this.newPayment.outstandingBefore != null && this.newPayment.amount != null) {
-      this.newPayment.outstandingAfter =
-        this.newPayment.outstandingBefore - this.newPayment.amount;
+      this.newPayment.outstandingAfter = this.newPayment.outstandingBefore - this.newPayment.amount;
     }
   }
 
-
-  deletePayment(payment: any, index: number) {
-
-    // 🔒 HARD BLOCK (extra safety)
+  async deletePayment(payment: Payment, index: number) {
     if (payment.status === 'Success') {
       alert('Successful payments cannot be deleted.');
       return;
     }
+    if (!confirm(`Are you sure you want to delete payment ${payment.paymentId}?`)) return;
 
-    const confirmed = confirm(
-      `Are you sure you want to delete payment ${payment.paymentId}?`
-    );
-
-    if (!confirmed) return;
-
-    // Remove from UI
     this.payments.splice(index, 1);
-
-    // Remove from IndexedDB using INTERNAL ID
     if (payment.id) {
-      this.dbService.delete('payments', payment.id);
+      try {
+        await this.apiService.delete('payments', payment.id);
+      } catch (error) {
+        console.error('❌ Failed to delete payment:', error);
+      }
     }
-
     this.sortPayments();
   }
 
   downloadReceipt(payment: Payment) {
     const doc = new jsPDF();
-
     doc.setFontSize(14);
     doc.text('PAYMENT RECEIPT', 70, 20);
-
     doc.setFontSize(10);
     doc.text(`Payment ID: ${payment.paymentId}`, 20, 40);
     doc.text(`Invoice No: ${payment.invoiceNo}`, 20, 50);
@@ -413,9 +364,6 @@ export class PaymentsComponent implements OnInit {
     doc.text(`Amount Paid: ₹${payment.amount}`, 20, 70);
     doc.text(`Outstanding After: ₹${payment.outstandingAfter}`, 20, 80);
     doc.text(`Date: ${payment.date}`, 20, 90);
-
     doc.save(`${payment.paymentId}.pdf`);
   }
-
-
 }

@@ -1,6 +1,6 @@
 import { Component, OnInit, AfterViewInit, ChangeDetectorRef } from '@angular/core';
 import { Router } from '@angular/router';
-import { DBService } from '../../service/db.service';
+import { ApiService } from '../../service/api.service';
 import { FormsModule } from '@angular/forms';
 import { CommonModule } from '@angular/common';
 import jsPDF from 'jspdf';
@@ -46,10 +46,10 @@ export class SalesOrderComponent implements OnInit, AfterViewInit {
   // ===== BASIC DETAILS =====
   salesOrderNo = '';
   salesOrderDate = '';
-  selectedCompanyName = ''; // For dropdown binding
+  selectedCompanyName = '';
   customerName = '';
   customerId = '';
-  inquiryId = '';   // auto-fetched from last inquiry for this customer
+  inquiryId = '';
   billAddr = '';
   shipAddr = '';
   gstNo = '';
@@ -88,9 +88,109 @@ export class SalesOrderComponent implements OnInit, AfterViewInit {
 
   constructor(
     private router: Router,
-    private dbService: DBService,
+    private apiService: ApiService,
     private cdr: ChangeDetectorRef
   ) { }
+
+  // ── Mapping helpers ──────────────────────────────────────
+
+  private toDbRow(so: any): any {
+    const row: any = {
+      order_ref:              so.orderNo               || null,
+      order_date:             so.orderDate             || null,
+      customer_name:          so.customerName          || null,
+      company_name:           so.companyName           || so.customerName || null,
+      inquiry_ref:            so.inquiryId             || null,
+      bill_addr:              so.billAddr              || null,
+      ship_addr:              so.shipAddr              || null,
+      gst_no:                 so.gstNo                 || null,
+      contact_person:         so.contactPerson         || null,
+      contact_no:             so.contactNo             || null,
+      payment_terms:          so.paymentTerms          || null,
+      credit_days:            so.creditDays            ?? null,
+      po_no:                  so.poNo                  || null,
+      po_date:                so.poDate                || null,
+      items:                  so.items                 ?? [],
+      freight_charges:        so.freightCharges        ?? 0,
+      advance_received:       so.advanceReceived       ?? 0,
+      grand_total:            so.grandTotal            ?? null,
+      status:                 so.status                || 'DRAFT',
+      expected_delivery_date: so.expectedDeliveryDate  || null,
+      delivery_terms:         so.deliveryTerms         || null,
+      transporter_name:       so.transporterName       || null,
+      transport_mode:         so.transportMode         || null,
+      gst_type:               so.gstType               || 'cgst_sgst',
+    };
+    if (so.id) row.id = so.id;
+    return row;
+  }
+
+  private fromDbRow(row: any): any {
+    return {
+      id:                   row.id,
+      orderNo:              row.order_ref             || '',
+      orderDate:            row.order_date            || '',
+      customerName:         row.customer_name         || '',
+      companyName:          row.company_name          || row.customer_name || '',
+      inquiryId:            row.inquiry_ref           || '',
+      billAddr:             row.bill_addr             || '',
+      shipAddr:             row.ship_addr             || '',
+      gstNo:                row.gst_no               || '',
+      contactPerson:        row.contact_person        || '',
+      contactNo:            row.contact_no            || '',
+      paymentTerms:         row.payment_terms         || 'Advance',
+      creditDays:           row.credit_days           ?? null,
+      poNo:                 row.po_no                || '',
+      poDate:               row.po_date              || '',
+      items:                Array.isArray(row.items)  ? row.items : [],
+      freightCharges:       row.freight_charges       ?? 0,
+      advanceReceived:      row.advance_received      ?? 0,
+      grandTotal:           row.grand_total           ?? 0,
+      status:               row.status               || 'DRAFT',
+      expectedDeliveryDate: row.expected_delivery_date || '',
+      deliveryTerms:        row.delivery_terms        || '',
+      transporterName:      row.transporter_name      || '',
+      transportMode:        row.transport_mode        || '',
+      gstType:              row.gst_type             || 'cgst_sgst',
+    };
+  }
+
+  private mapCustomer(row: any): any {
+    return {
+      id:              row.id,
+      customerId:      row.customer_ref     || '',
+      companyName:     row.company_name     || '',
+      name:            row.name             || '',
+      gstin:           row.gstin            || '',
+      mobile:          row.mobile           || '',
+      email:           row.email            || '',
+      primaryContact:  row.primary_contact  || {},
+      secondaryContact: row.secondary_contact || {},
+      officeAddress:   row.office_address   || {},
+      billing:         row.billing          || {},
+      billing2:        row.billing2         || {},
+      shipping:        row.shipping         || {},
+      shippingAddresses: row.shipping_addresses || [],
+    };
+  }
+
+  private mapOffer(row: any): any {
+    return {
+      id:              row.id,
+      offerRef:        row.offer_ref      || '',
+      offerStatus:     row.offer_status   || '',
+      status:          row.status         || 'active',
+      customerName:    row.customer_name  || '',
+      customerSnapshot: row.customer_snapshot || null,
+      inquiryNo:       row.inquiry_no     ?? null,
+      items:           Array.isArray(row.items) ? row.items : [],
+      paymentTerms:    row.payment_terms  || '',
+      freightCharges:  row.freight_charges ?? 0,
+      deliveryTerms:   row.delivery_terms || '',
+      gstType:         row.gst_type       || 'cgst_sgst',
+      date:            row.date           || '',
+    };
+  }
 
   private normalizeText(value: any): string {
     return String(value || '').trim().toLowerCase();
@@ -133,7 +233,7 @@ export class SalesOrderComponent implements OnInit, AfterViewInit {
 
       const customer: any = await this.loadCustomerByName(this.customerName);
       if (customer) {
-        this.customerId = customer.customerId || customer.id || '';
+        this.customerId = customer.id || '';
         this.billAddr = this.formatAddress(customer.billing);
         this.shipAddr = this.formatAddress(customer.shipping);
         this.gstNo = customer.gstin || '';
@@ -144,10 +244,9 @@ export class SalesOrderComponent implements OnInit, AfterViewInit {
       if (offerState.deliveryTerms) this.deliveryTerms = offerState.deliveryTerms;
       if (offerState.gstType) this.gstType = offerState.gstType;
 
-      // Autofill PO fields if a PO already exists for this offer
       try {
-        const allPOs = await this.dbService.getAllPurchaseOrders();
-        const po = allPOs.find((p: any) => p.offerRef === offerState.offerRef);
+        const allPOs = await this.apiService.getAll('purchaseOrders');
+        const po = allPOs.find((p: any) => (p.offer_ref || p.offerRef) === offerState.offerRef);
         if (po) { this.fillFromPO(po); }
       } catch { /* ignore */ }
 
@@ -183,41 +282,36 @@ export class SalesOrderComponent implements OnInit, AfterViewInit {
     this.inquiryId = `INQ-${String(this.inquiry.id || '').padStart(3, '0')}`;
     this.salesOrderDate = new Date().toISOString().slice(0, 10);
 
-    // Set company dropdown binding but fill fields directly —
-    // do NOT call onCompanySelected (it triggers offer-selection modal + old-order prefill)
     this.selectedCompanyName = this.inquiry.companyName || '';
     const customer: any = this.customers.find((c: any) =>
       (c.companyName || '').toLowerCase().trim() === this.selectedCompanyName.toLowerCase().trim()
     );
     if (customer) {
-      this.customerId = customer.customerId || customer.id || '';
+      this.customerId = customer.id || '';
       this.customerName = customer.name || customer.companyName || '';
-      this.contactPerson = this.formatContactName(customer.primaryContact) || customer.contactPerson || '';
+      this.contactPerson = this.formatContactName(customer.primaryContact) || '';
       this.contactNo = customer.primaryContact?.mobile || customer.mobile || '';
       this.gstNo = customer.gstin || customer.officeAddress?.gstin || '';
       this.billAddr = this.formatAddress(customer.officeAddress || customer.billing);
       this.shipAddr = this.formatAddress(customer.billing || customer.shipping);
     }
 
-    // Offer terms override
     if (offerState) {
       this.paymentTerms = this.normalizePaymentTerms(offerState.paymentTerms);
       if (offerState.freightCharges) this.freightCharges = offerState.freightCharges;
       if (offerState.deliveryTerms) this.deliveryTerms = offerState.deliveryTerms;
       if (offerState.validity) this.expectedDeliveryDate = offerState.validity;
-
       if (offerState.gstType) this.gstType = offerState.gstType;
 
-      // Autofill PO fields if a PO already exists for this inquiry/offer
       try {
-        const allPOs = await this.dbService.getAllPurchaseOrders();
+        const allPOs = await this.apiService.getAll('purchaseOrders');
         const po = allPOs.find((p: any) =>
-          p.offerRef === offerState.offerRef ||
-          p.inquiryRef === this.inquiryId
+          (p.offer_ref || p.offerRef) === offerState.offerRef ||
+          p.inquiry_ref === this.inquiryId
         );
         if (po) { this.fillFromPO(po); }
       } catch { /* ignore */ }
-      // Clear items added by onCompanySelected and use offer items
+
       this.itemsShow = [];
       (offerState.items || []).forEach((i: any, idx: number) => {
         const productName = i.name || i.productName || '';
@@ -240,7 +334,7 @@ export class SalesOrderComponent implements OnInit, AfterViewInit {
       });
     } else {
       this.itemsShow = [];
-      this.inquiry.items.forEach((i: any) => {
+      (this.inquiry.items || []).forEach((i: any) => {
         const productName = i.productName || i.name || '';
         const product = this.allItems.find((p: any) =>
           (p.displayName || p.name || '').toLowerCase() === productName.toLowerCase()
@@ -265,7 +359,6 @@ export class SalesOrderComponent implements OnInit, AfterViewInit {
   }
 
   async ngAfterViewInit() {
-    console.log('🟢 ngAfterViewInit → loading sales orders');
     await this.loadSalesOrders();
   }
 
@@ -273,57 +366,61 @@ export class SalesOrderComponent implements OnInit, AfterViewInit {
 
   async initDBAndLoad() {
     try {
-      this.allItems = await this.dbService.getAllProducts();
-    } catch (error) {
-      console.error('❌ Failed to load inventory:', error);
+      this.allItems = await this.apiService.getAll('inventory');
+    } catch {
       this.allItems = [];
     }
 
     try {
-      this.customers = await this.dbService.getAllCustomers();
-    } catch (error) {
-      console.error('❌ Failed to load customers:', error);
+      const rows = await this.apiService.getAll('customers');
+      this.customers = rows.map((r: any) => this.mapCustomer(r));
+    } catch {
       this.customers = [];
     }
   }
 
   async generateSalesOrderNo() {
     try {
-      const allOrders = await this.dbService.getSalesOrders();
-
+      const allOrders = await this.apiService.getAll('salesOrders');
       let nextNum = 1;
       if (allOrders.length > 0) {
-        const lastOrder = allOrders.reduce((prev, current) => {
-          const prevNum = parseInt(prev.orderNo.split('/')[2]) || 0;
-          const currNum = parseInt(current.orderNo.split('/')[2]) || 0;
-          return currNum > prevNum ? current : prev;
-        });
-        nextNum = parseInt(lastOrder.orderNo.split('/')[2]) + 1;
+        const maxNum = allOrders.reduce((max: number, row: any) => {
+          const ref = row.order_ref || '';
+          const parts = ref.split('/');
+          const n = parseInt(parts[2] || '0');
+          return isNaN(n) ? max : Math.max(max, n);
+        }, 0);
+        nextNum = maxNum + 1;
       }
-
       const year = new Date().getFullYear();
       this.salesOrderNo = `SO/${year}/${String(nextNum).padStart(5, '0')}`;
-    } catch (error) {
-      console.error('❌ Failed to generate order number:', error);
+    } catch {
       const year = new Date().getFullYear();
       this.salesOrderNo = `SO/${year}/00001`;
     }
   }
 
-  async loadCustomerByName(name: string) {
-    return this.dbService.getCustomerByName(name);
+  async loadCustomerByName(name: string): Promise<any | null> {
+    return this.customers.find(c =>
+      c.companyName?.toLowerCase().trim() === name.toLowerCase().trim()
+    ) || null;
   }
 
   async loadSalesOrders() {
-    console.log('📥 Loading sales orders...');
     try {
-      const allOrders = await this.dbService.getSalesOrders();
-      this.draftOrders = allOrders.filter(o => o.status === 'DRAFT');
-      this.submittedOrders = allOrders.filter(o => o.status === 'SUBMITTED');
-      this.approvedOrders = allOrders.filter(o => o.status === 'APPROVED');
+      const rows = await this.apiService.getAll('salesOrders');
+      const all = rows.map((r: any) => this.fromDbRow(r));
+      this.draftOrders = all.filter((o: any) => o.status === 'DRAFT');
+      this.submittedOrders = all.filter((o: any) => o.status === 'SUBMITTED');
+      this.approvedOrders = all.filter((o: any) => o.status === 'APPROVED');
     } catch (error) {
       console.error('❌ Failed to load sales orders:', error);
     }
+  }
+
+  private getSalesOrderByNo(orderNo: string): any | null {
+    const all = [...this.draftOrders, ...this.submittedOrders, ...this.approvedOrders];
+    return all.find(o => o.orderNo === orderNo) || null;
   }
 
   // ===== CUSTOMER SELECTION =====
@@ -340,17 +437,15 @@ export class SalesOrderComponent implements OnInit, AfterViewInit {
       );
 
       if (customer) {
-        this.customerId = customer.customerId || customer.id || '';
+        this.customerId = customer.id || '';
         this.customerName = customer.name || customer.companyName || '';
-        this.contactPerson = this.formatContactName(customer.primaryContact) || customer.contactPerson || '';
+        this.contactPerson = this.formatContactName(customer.primaryContact) || '';
         this.contactNo = customer.primaryContact?.mobile || customer.mobile || '';
         this.gstNo = customer.gstin || customer.officeAddress?.gstin || '';
 
-        // Use officeAddress as billing address (renamed to avoid confusion)
         const addrSrc = customer.officeAddress || customer.billing;
         this.billAddr = this.formatAddress(addrSrc);
 
-        // Build address option lists for multi-address selection
         this.billingAddressOptions = [];
         if (customer.officeAddress?.line1 || customer.officeAddress?.street) {
           this.billingAddressOptions.push({ label: 'Office Address', value: this.formatAddress(customer.officeAddress) });
@@ -372,29 +467,29 @@ export class SalesOrderComponent implements OnInit, AfterViewInit {
           }
         });
 
-        // Default shipAddr to first shipping address (not billing)
         this.shipAddr = this.shippingAddressOptions[0]?.value || '';
-
         this.selectedCompanyForOffers = selectedCompanyName;
 
         // Fetch last inquiry for this company → autofill inquiryId
         try {
-          const allInquiries: any[] = await this.dbService.getAll('inquiries');
-          const custInquiries = allInquiries.filter(
+          const inqRows = await this.apiService.getAll('inquiries');
+          const custInquiries = inqRows.filter(
             (inq: any) =>
-              this.normalizeText(inq.companyName) === this.normalizeText(selectedCompanyName) ||
-              this.normalizeText(inq.customerName) === this.normalizeText(customer.name)
+              this.normalizeText(inq.company_name) === this.normalizeText(selectedCompanyName) ||
+              this.normalizeText(inq.customer_name) === this.normalizeText(customer.name)
           );
           if (custInquiries.length > 0) {
             const last = custInquiries[custInquiries.length - 1];
-            this.inquiryId = this.toDisplayInquiryId(last.id);
+            const refMatch = (last.inquiry_ref || '').match(/INQ-(\d+)/i);
+            const seqNum = refMatch ? parseInt(refMatch[1], 10) : null;
+            this.inquiryId = seqNum ? `INQ-${String(seqNum).padStart(3, '0')}` : '';
           }
         } catch { this.inquiryId = ''; }
 
         // Autofill freight + items from previous sales order for this customer
         try {
-          const allOrders = await this.dbService.getSalesOrders();
-          const custOrders = (allOrders as any[]).filter(
+          const all = [...this.draftOrders, ...this.submittedOrders, ...this.approvedOrders];
+          const custOrders = all.filter(
             (o: any) => (o.companyName || o.customerName || '').toLowerCase() === selectedCompanyName.toLowerCase()
           );
           if (custOrders.length > 0) {
@@ -402,7 +497,6 @@ export class SalesOrderComponent implements OnInit, AfterViewInit {
             if (last.freightCharges) this.freightCharges = last.freightCharges;
             if (last.deliveryTerms) this.deliveryTerms = last.deliveryTerms;
             if (last.paymentTerms) this.paymentTerms = this.normalizePaymentTerms(last.paymentTerms);
-            // Pre-fill items from last order
             if (last.items && last.items.length > 0 && this.itemsShow.length === 0) {
               this.itemsShow = last.items.map((i: any) => ({ ...i, total: 0 }));
               this.itemsShow.forEach(line => this.recalculateLine(line));
@@ -418,14 +512,10 @@ export class SalesOrderComponent implements OnInit, AfterViewInit {
       }
     } catch (error) {
       console.error('❌ Error in onCompanySelected:', error);
-      alert('Error loading company details. Please try again.');
       this.resetCompanyFields();
     }
   }
 
-  /**
-   * ✅ FIXED: Allows partial name matching ("Polter" matches "Polter Inc")
-   */
   async loadOffersForCompany(companyName: string) {
     try {
       this.isLoadingOffers = true;
@@ -433,10 +523,11 @@ export class SalesOrderComponent implements OnInit, AfterViewInit {
       this.availableOffers = [];
       this.cdr.detectChanges();
 
-      const allOffers = await this.dbService.getAll('offers');
+      const rows = await this.apiService.getAll('offers');
+      const offers = rows.map((r: any) => this.mapOffer(r));
       const selected = this.normalizeText(companyName);
 
-      this.availableOffers = allOffers.filter((o: any) => {
+      this.availableOffers = offers.filter((o: any) => {
         if (o.status === 'superseded') return false;
         const status = this.normalizeText(o.offerStatus);
         const isOrderReceived = status === 'order_received' || status === 'order received';
@@ -462,11 +553,7 @@ export class SalesOrderComponent implements OnInit, AfterViewInit {
     }
   }
 
-  /**
-   * ✅ FIXED: Mappings
-   */
   async selectOffer(offer: any) {
-    console.log('✅ Selected offer:', offer);
     try {
       this.itemsShow = [];
       if (offer.items && Array.isArray(offer.items)) {
@@ -489,16 +576,14 @@ export class SalesOrderComponent implements OnInit, AfterViewInit {
       if (offer.deliveryTerms) this.deliveryTerms = offer.deliveryTerms;
       if (offer.freightCharges) this.freightCharges = offer.freightCharges;
       this.paymentTerms = this.normalizePaymentTerms(offer.paymentTerms);
-
       if (offer.gstType) this.gstType = offer.gstType;
       this.inquiryId = this.toDisplayInquiryId(offer.inquiryNo ?? offer.inquiryId ?? this.inquiryId);
 
-      // Autofill PO fields if a PO already exists for this offer
       try {
-        const allPOs = await this.dbService.getAllPurchaseOrders();
+        const allPOs = await this.apiService.getAll('purchaseOrders');
         const po = allPOs.find((p: any) =>
-          p.offerRef === offer.offerRef ||
-          (this.inquiryId && p.inquiryRef === this.inquiryId)
+          (p.offer_ref || p.offerRef) === offer.offerRef ||
+          (this.inquiryId && (p.inquiry_ref || p.inquiryRef) === this.inquiryId)
         );
         if (po) { this.fillFromPO(po); }
       } catch { /* ignore */ }
@@ -516,9 +601,7 @@ export class SalesOrderComponent implements OnInit, AfterViewInit {
 
   skipOfferSelection() {
     this.closeOfferModal();
-    if (this.itemsShow.length === 0) {
-      this.addLine();
-    }
+    if (this.itemsShow.length === 0) this.addLine();
   }
 
   // ===== HELPER METHODS =====
@@ -526,24 +609,16 @@ export class SalesOrderComponent implements OnInit, AfterViewInit {
   formatOfferDate(dateString: string): string {
     if (!dateString) return 'N/A';
     try {
-      const date = new Date(dateString);
-      return date.toLocaleDateString('en-IN', {
+      return new Date(dateString).toLocaleDateString('en-IN', {
         day: '2-digit', month: 'short', year: 'numeric'
       });
-    } catch {
-      return dateString;
-    }
+    } catch { return dateString; }
   }
 
   getOfferTotal(offer: any): number {
     if (offer.totalAmount) return Number(offer.totalAmount);
     if (!offer.items || !Array.isArray(offer.items)) return 0;
-
-    return offer.items.reduce((total: number, item: any) => {
-      const qty = Number(item.qty) || 0;
-      const rate = Number(item.rate) || 0;
-      return total + (qty * rate);
-    }, 0);
+    return offer.items.reduce((total: number, item: any) => total + (Number(item.qty) || 0) * (Number(item.rate) || 0), 0);
   }
 
   goBackToList() {
@@ -552,7 +627,6 @@ export class SalesOrderComponent implements OnInit, AfterViewInit {
   }
 
   generatePI() {
-    // Navigate to proforma-invoice with current order details in state
     const state: any = {
       fromSalesOrder: true,
       companyName: this.selectedCompanyName,
@@ -574,9 +648,7 @@ export class SalesOrderComponent implements OnInit, AfterViewInit {
   }
 
   onPaymentTermsChange(value: string) {
-    if (value !== 'Credit') {
-      this.creditDays = null;
-    }
+    if (value !== 'Credit') this.creditDays = null;
   }
 
   // ===== FORM ACTIONS =====
@@ -586,7 +658,6 @@ export class SalesOrderComponent implements OnInit, AfterViewInit {
     this.isEditing = false;
     this.editingOrder = null;
     this.resetForm();
-
     await this.generateSalesOrderNo();
     this.salesOrderDate = new Date().toISOString().slice(0, 10);
   }
@@ -597,7 +668,6 @@ export class SalesOrderComponent implements OnInit, AfterViewInit {
         alert('❌ Order No and Customer Name are required');
         return;
       }
-
       if (this.itemsShow.length === 0) {
         alert('❌ Add at least one line item');
         return;
@@ -606,24 +676,24 @@ export class SalesOrderComponent implements OnInit, AfterViewInit {
       const salesOrder = this.buildSalesOrderPayload();
 
       if (this.isEditing && this.editingOrder?.id) {
-        await this.dbService.put('salesOrders', {
+        await this.apiService.put('salesOrders', this.toDbRow({
           ...salesOrder,
           id: this.editingOrder.id,
           updatedAt: new Date().toISOString()
-        });
+        }));
         alert('✅ Sales Order updated successfully!');
       } else {
-        await this.dbService.add('salesOrders', salesOrder);
+        await this.apiService.add('salesOrders', this.toDbRow(salesOrder));
         alert('✅ Sales Order saved successfully!');
       }
 
-      await this.dbService.createAutoReminder({
+      await this.addReminder({
         type: 'order',
-        name: this.customerName,
-        mobile: this.contactNo,
+        name: salesOrder.customerName || '',
         referenceNo: this.salesOrderNo,
-        followUpDays: 7,
-        note: `Follow-up on Sales Order ${this.salesOrderNo}`
+        date: salesOrder.expectedDeliveryDate || null,
+        daysFromNow: 7,
+        note: `Follow up on sales order ${this.salesOrderNo}`,
       });
 
       this.showForm = false;
@@ -675,13 +745,9 @@ export class SalesOrderComponent implements OnInit, AfterViewInit {
 
   private async upsertSalesOrder(status: 'DRAFT' | 'SUBMITTED' | 'APPROVED') {
     this.salesOrderStatus = status;
-    const existing = await this.dbService.getSalesOrderByNo(this.salesOrderNo);
-    const payload = {
-      ...existing,
-      ...this.buildSalesOrderPayload(),
-      status
-    };
-    await this.dbService.addOrUpdateSalesOrder(payload);
+    const existing = this.getSalesOrderByNo(this.salesOrderNo);
+    const payload = { ...existing, ...this.buildSalesOrderPayload(), status };
+    await this.apiService.put('salesOrders', this.toDbRow(payload));
     await this.loadSalesOrders();
   }
 
@@ -711,7 +777,7 @@ export class SalesOrderComponent implements OnInit, AfterViewInit {
     this.salesOrderDate = order.orderDate;
     this.selectedCompanyName = order.companyName || '';
     this.customerName = order.customerName;
-    this.customerId = order.customerId;
+    this.customerId = order.customerId || '';
     this.inquiryId = order.inquiryId || '';
     this.billAddr = order.billAddr;
     this.shipAddr = order.shipAddr;
@@ -735,14 +801,7 @@ export class SalesOrderComponent implements OnInit, AfterViewInit {
 
   async approveFromTable(order: any) {
     try {
-      const approvedOrder = {
-        ...order,
-        status: 'APPROVED',
-        updatedAt: new Date().toISOString()
-      };
-
-      await this.dbService.put('salesOrders', approvedOrder);
-      console.log('✅ Sales Order approved:', order.orderNo);
+      await this.apiService.put('salesOrders', this.toDbRow({ ...order, status: 'APPROVED' }));
       alert('✅ Sales Order approved');
       await this.loadSalesOrders();
     } catch (error) {
@@ -753,10 +812,8 @@ export class SalesOrderComponent implements OnInit, AfterViewInit {
 
   async deleteDraft(order: any) {
     if (!confirm(`Delete Sales Order ${order.orderNo}?`)) return;
-
     try {
-      await this.dbService.delete('salesOrders', order.id);
-      console.log('🗑️ Sales Order deleted:', order.orderNo);
+      await this.apiService.delete('salesOrders', order.id);
       alert('✅ Sales Order deleted successfully');
       await this.loadSalesOrders();
     } catch (error) {
@@ -771,25 +828,18 @@ export class SalesOrderComponent implements OnInit, AfterViewInit {
     return { item: '', qty: 1, uom: '', hsn: '', rate: 0, disc: 0, discountType: '₹', gst: 18, total: 0 };
   }
 
-  addLine() {
-    this.itemsShow.push(this.createEmptyLine());
-  }
-
-  removeLine(index: number) {
-    this.itemsShow.splice(index, 1);
-  }
+  addLine() { this.itemsShow.push(this.createEmptyLine()); }
+  removeLine(index: number) { this.itemsShow.splice(index, 1); }
 
   recalculateLine(line: any) {
     const qty = Number(line.qty) || 0;
     const rate = Number(line.rate) || 0;
     let base = qty * rate;
-
     if (line.discountType === '%') {
       base -= base * (Number(line.disc) || 0) / 100;
     } else {
       base -= Number(line.disc) || 0;
     }
-
     const tax = base * (Number(line.gst) || 0) / 100;
     line.total = base + tax;
   }
@@ -812,12 +862,16 @@ export class SalesOrderComponent implements OnInit, AfterViewInit {
   }
 
   private fillFromPO(po: any) {
-    this.poNo = po.poNumber || '';
-    this.poDate = po.poDate || '';
-    if (po.expectedDeliveryDate && !this.expectedDeliveryDate) this.expectedDeliveryDate = po.expectedDeliveryDate;
-    if (po.transporterName && !this.transporterName) this.transporterName = po.transporterName;
-    if (po.transportMode && !this.transportMode) this.transportMode = po.transportMode;
-    if (po.deliveryTerms && !this.deliveryTerms) this.deliveryTerms = po.deliveryTerms;
+    this.poNo = po.poNumber || po.po_ref || '';
+    this.poDate = po.poDate || po.po_date || '';
+    const edd = po.expectedDeliveryDate || po.expected_delivery_date;
+    if (edd && !this.expectedDeliveryDate) this.expectedDeliveryDate = edd;
+    const tn = po.transporterName || po.transporter_name;
+    if (tn && !this.transporterName) this.transporterName = tn;
+    const tm = po.transportMode || po.transport_mode;
+    if (tm && !this.transportMode) this.transportMode = tm;
+    const dt = po.deliveryTerms || po.delivery_terms;
+    if (dt && !this.deliveryTerms) this.deliveryTerms = dt;
   }
 
   // ===== HELPERS =====
@@ -841,7 +895,6 @@ export class SalesOrderComponent implements OnInit, AfterViewInit {
     this.shipAddr = '';
   }
 
-  // File handling
   onFilesSelected(event: Event): void {
     const input = event.target as HTMLInputElement;
     if (!input.files) return;
@@ -864,52 +917,6 @@ export class SalesOrderComponent implements OnInit, AfterViewInit {
 
   clearAllFiles(): void { this.files = []; }
 
-  // PDF Generation
-  // downloadSalesOrderPDF(order?: any) {
-  //   const so = order ?? {
-  //     orderNo: this.salesOrderNo,
-  //     orderDate: this.salesOrderDate,
-  //     customerName: this.customerName,
-  //     billAddr: this.billAddr,
-  //     shipAddr: this.shipAddr,
-  //     items: this.itemsShow,
-  //     freightCharges: this.freightCharges
-  //   };
-
-  //   const doc = new jsPDF('p', 'mm', 'a4');
-  //   const pageWidth = doc.internal.pageSize.getWidth();
-  //   let yPosition = 20;
-
-  //   doc.setFontSize(16);
-  //   doc.text('SALES ORDER', pageWidth / 2, yPosition, { align: 'center' });
-  //   yPosition += 10;
-
-  //   doc.setFontSize(12);
-  //   doc.text(`Order No: ${so.orderNo}`, 15, yPosition);
-  //   doc.text(`Date: ${so.orderDate}`, pageWidth - 60, yPosition);
-  //   yPosition += 10;
-
-  //   doc.text(`Customer: ${so.customerName}`, 15, yPosition);
-  //   yPosition += 20;
-
-  //   const tableData = so.items.map((item: any, index: number) => [
-  //     (index + 1).toString(),
-  //     item.item || '-',
-  //     item.qty.toString(),
-  //     item.uom || 'Kg',
-  //     item.rate.toFixed(2),
-  //     item.total.toFixed(2)
-  //   ]);
-
-  //   autoTable(doc, {
-  //     startY: yPosition,
-  //     head: [['Sr.', 'Item', 'Qty', 'UOM', 'Rate', 'Amount']],
-  //     body: tableData,
-  //   });
-
-  //   doc.save(`${so.orderNo}.pdf`);
-  // }
-
   async downloadSalesOrderPDF(order?: any) {
     const so = order ?? {
       orderNo: this.salesOrderNo,
@@ -923,211 +930,109 @@ export class SalesOrderComponent implements OnInit, AfterViewInit {
     const pageWidth = doc.internal.pageSize.getWidth();
     let yPosition = 15;
 
-    // ===== HEADER =====
     doc.setFontSize(16);
     doc.setFont('helvetica', 'bold');
     doc.text('Navbharat Insulation & Engg. Co.', pageWidth / 2, yPosition, { align: 'center' });
-
     yPosition += 8;
     doc.text('SALES ORDER', pageWidth / 2, yPosition, { align: 'center' });
-
     yPosition += 7;
     doc.setFontSize(11);
     doc.text('Quantity & Rate Schedule', pageWidth / 2, yPosition, { align: 'center' });
-
     yPosition += 7;
     doc.setFontSize(12);
 
     const soDate = so.orderDate
-      ? new Date(so.orderDate).toLocaleDateString('en-IN', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric'
-      })
+      ? new Date(so.orderDate).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })
       : new Date().toLocaleDateString('en-IN');
 
-    doc.text(
-      `ORDER REFERENCE : ${so.orderNo} Dt. ${soDate}`,
-      pageWidth / 2,
-      yPosition,
-      { align: 'center' }
-    );
-
+    doc.text(`ORDER REFERENCE : ${so.orderNo} Dt. ${soDate}`, pageWidth / 2, yPosition, { align: 'center' });
     yPosition += 10;
 
-    // ===== ITEMS TABLE =====
     const tableData = so.items.map((item: any, index: number) => {
-      const specifications =
-        item.specifications || (item.hsn ? `HSN: ${item.hsn}` : '-');
-
+      const specifications = item.specifications || (item.hsn ? `HSN: ${item.hsn}` : '-');
       const qty = Number(item.qty) || 0;
       const rate = Number(item.rate) || 0;
       let base = qty * rate;
-
-      if (item.discountType === '%') {
-        base -= base * (Number(item.disc) || 0) / 100;
-      } else {
-        base -= Number(item.disc) || 0;
-      }
-
-      return [
-        (index + 1).toString(),
-        item.item || '-',
-        item.hsn || '-',
-        specifications,
-        qty.toString(),
-        item.uom || 'Kg',
-        rate.toFixed(2),
-        base.toFixed(2)
-      ];
+      if (item.discountType === '%') { base -= base * (Number(item.disc) || 0) / 100; }
+      else { base -= Number(item.disc) || 0; }
+      return [(index + 1).toString(), item.item || '-', item.hsn || '-', specifications,
+              qty.toString(), item.uom || 'Kg', rate.toFixed(2), base.toFixed(2)];
     });
 
     autoTable(doc, {
       startY: yPosition,
-      head: [[
-        'Sr. No.',
-        'Material Description',
-        'HSN CODE',
-        'Specifications',
-        'Quantity',
-        'Uom',
-        'Rate/Uom',
-        'Amount (Rs.)'
-      ]],
+      head: [['Sr. No.', 'Material Description', 'HSN CODE', 'Specifications', 'Quantity', 'Uom', 'Rate/Uom', 'Amount (Rs.)']],
       body: tableData,
       theme: 'grid',
-      headStyles: {
-        fillColor: [255, 255, 255],
-        textColor: [0, 0, 0],
-        fontStyle: 'bold',
-        halign: 'center',
-        lineWidth: 0.5,
-        lineColor: [0, 0, 0]
-      },
-      columnStyles: {
-        0: { cellWidth: 15, halign: 'center' },
-        1: { cellWidth: 40, halign: 'center' },
-        2: { cellWidth: 20, halign: 'center' },
-        3: { cellWidth: 35 },
-        4: { cellWidth: 20, halign: 'center' },
-        5: { cellWidth: 15, halign: 'center' },
-        6: { cellWidth: 20, halign: 'center' },
-        7: { cellWidth: 25, halign: 'right' }
-      },
-      styles: {
-        fontSize: 10,
-        cellPadding: 3,
-        lineWidth: 0.5,
-        lineColor: [0, 0, 0]
-      }
+      headStyles: { fillColor: [255, 255, 255], textColor: [0, 0, 0], fontStyle: 'bold', halign: 'center', lineWidth: 0.5, lineColor: [0, 0, 0] },
+      columnStyles: { 0: { cellWidth: 15, halign: 'center' }, 1: { cellWidth: 40, halign: 'center' }, 2: { cellWidth: 20, halign: 'center' }, 3: { cellWidth: 35 }, 4: { cellWidth: 20, halign: 'center' }, 5: { cellWidth: 15, halign: 'center' }, 6: { cellWidth: 20, halign: 'center' }, 7: { cellWidth: 25, halign: 'right' } },
+      styles: { fontSize: 10, cellPadding: 3, lineWidth: 0.5, lineColor: [0, 0, 0] }
     });
 
     yPosition = (doc as any).lastAutoTable.finalY + 5;
 
-    // ===== CORRECT CALCULATIONS =====
     const baseTotal = so.items.reduce((sum: number, i: any) => {
-      const qty = Number(i.qty) || 0;
-      const rate = Number(i.rate) || 0;
+      const qty = Number(i.qty) || 0; const rate = Number(i.rate) || 0;
       let base = qty * rate;
-
-      if (i.discountType === '%') {
-        base -= base * (Number(i.disc) || 0) / 100;
-      } else {
-        base -= Number(i.disc) || 0;
-      }
-
+      if (i.discountType === '%') base -= base * (Number(i.disc) || 0) / 100;
+      else base -= Number(i.disc) || 0;
       return sum + base;
     }, 0);
-
     const gstTotal = so.items.reduce((sum: number, i: any) => {
-      const qty = Number(i.qty) || 0;
-      const rate = Number(i.rate) || 0;
+      const qty = Number(i.qty) || 0; const rate = Number(i.rate) || 0;
       let base = qty * rate;
-
-      if (i.discountType === '%') {
-        base -= base * (Number(i.disc) || 0) / 100;
-      } else {
-        base -= Number(i.disc) || 0;
-      }
-
+      if (i.discountType === '%') base -= base * (Number(i.disc) || 0) / 100;
+      else base -= Number(i.disc) || 0;
       return sum + (base * (Number(i.gst) || 0) / 100);
     }, 0);
 
-    // ===== FINANCIAL SUMMARY =====
     const summaryStartX = 120;
     doc.setFontSize(11);
-
     doc.setFont('helvetica', 'bold');
     doc.text('Assessable Value :', summaryStartX, yPosition, { align: 'right' });
-    doc.text(baseTotal.toFixed(2), summaryStartX + 50, yPosition);
-    yPosition += 6;
-
+    doc.text(baseTotal.toFixed(2), summaryStartX + 50, yPosition); yPosition += 6;
     doc.setFont('helvetica', 'normal');
     doc.text('Packing & Forwarding', summaryStartX, yPosition, { align: 'right' });
     doc.setFont('helvetica', 'bold');
-    doc.text((so.freightCharges || 0).toFixed(2), summaryStartX + 50, yPosition);
-    yPosition += 6;
-
+    doc.text((so.freightCharges || 0).toFixed(2), summaryStartX + 50, yPosition); yPosition += 6;
+    const subTotal = baseTotal + (so.freightCharges || 0);
     doc.setFont('helvetica', 'normal');
     doc.text('Sub Total:', summaryStartX, yPosition, { align: 'right' });
     doc.setFont('helvetica', 'bold');
-    const subTotal = baseTotal + (so.freightCharges || 0);
-    doc.text(subTotal.toFixed(2), summaryStartX + 50, yPosition);
-    yPosition += 6;
-
+    doc.text(subTotal.toFixed(2), summaryStartX + 50, yPosition); yPosition += 6;
     const taxRate = so.items.length > 0 && so.items[0].gst ? so.items[0].gst : 18;
     doc.setFont('helvetica', 'normal');
     doc.text(`IGST @ ${taxRate}%`, summaryStartX, yPosition, { align: 'right' });
     doc.text('N.A.', summaryStartX + 25, yPosition, { align: 'center' });
-    doc.text(gstTotal.toFixed(2), summaryStartX + 50, yPosition);
-    yPosition += 6;
-
+    doc.text(gstTotal.toFixed(2), summaryStartX + 50, yPosition); yPosition += 6;
     doc.setFont('helvetica', 'bold');
-    doc.text('Round off', summaryStartX, yPosition, { align: 'right' });
     const grandTotalBeforeRound = subTotal + gstTotal;
     const roundedTotal = Math.round(grandTotalBeforeRound);
     const roundOff = roundedTotal - grandTotalBeforeRound;
-    doc.text(roundOff.toFixed(2), summaryStartX + 50, yPosition);
-    yPosition += 6;
-
+    doc.text('Round off', summaryStartX, yPosition, { align: 'right' });
+    doc.text(roundOff.toFixed(2), summaryStartX + 50, yPosition); yPosition += 6;
     doc.text('Grand Total :', summaryStartX, yPosition, { align: 'right' });
-    doc.text(roundedTotal.toFixed(2), summaryStartX + 50, yPosition);
-    yPosition += 8;
-
-    doc.setFont('helvetica', 'bold');
-    doc.text(`In Words - Rs. ${this.convertNumberToWords(roundedTotal)}`, 15, yPosition);
-    yPosition += 10;
-
-    doc.text(
-      '# Subject to the Terms stated in enclosed Commercial Terms & Conditions Annexure.',
-      15,
-      yPosition
-    );
-    yPosition += 10;
-
+    doc.text(roundedTotal.toFixed(2), summaryStartX + 50, yPosition); yPosition += 8;
+    doc.text(`In Words - Rs. ${this.convertNumberToWords(roundedTotal)}`, 15, yPosition); yPosition += 10;
+    doc.text('# Subject to the Terms stated in enclosed Commercial Terms & Conditions Annexure.', 15, yPosition); yPosition += 10;
     doc.setFontSize(12);
     doc.setFont('helvetica', 'normal');
     doc.text('For, Navbharat Insulation & Engg. Co.', 15, yPosition);
     doc.setFontSize(11);
     doc.text('Signed', pageWidth - 15, yPosition, { align: 'right' });
-
     yPosition += 3;
     try {
       const stampBase64 = await this.loadLogoAsBase64('assets/stamp.jpeg');
       doc.addImage(stampBase64, 'JPEG', 15, yPosition, 30, 22);
     } catch { /* stamp optional */ }
     yPosition += 30;
-
     doc.setFontSize(11);
     doc.text('Authorised Signatory', 15, yPosition);
     doc.text(`For ${so.companyName || 'Customer'}`, pageWidth - 15, yPosition, { align: 'right' });
-
     yPosition += 5;
     doc.text('Accepted as above', pageWidth - 15, yPosition, { align: 'right' });
-
     doc.save(`${so.orderNo}.pdf`);
   }
-
 
   private buildSalesOrderPayload() {
     return {
@@ -1159,9 +1064,6 @@ export class SalesOrderComponent implements OnInit, AfterViewInit {
     };
   }
 
-  // Format Helpers
-
-  /** Format contact name as "Ms. Tisya Pawar" — title gets a period, fallback to contactPerson */
   formatContactName(contact: any): string {
     if (!contact) return '';
     const title = contact.title ? contact.title.replace(/\.?$/, '.') : '';
@@ -1170,15 +1072,8 @@ export class SalesOrderComponent implements OnInit, AfterViewInit {
 
   formatAddress(addr: any): string {
     if (!addr) return '';
-    const parts = [
-      addr.line1 || addr.street,
-      addr.line2 || addr.area,
-      addr.city,
-      addr.state,
-      addr.pincode,
-      addr.country
-    ].filter(p => p && p.trim());
-    return parts.join(', ');
+    return [addr.line1 || addr.street, addr.line2 || addr.area, addr.city, addr.state, addr.pincode, addr.country]
+      .filter(p => p && p.trim()).join(', ');
   }
 
   getYearRange(): string {
@@ -1186,18 +1081,14 @@ export class SalesOrderComponent implements OnInit, AfterViewInit {
     return `${y}-${(y + 1).toString().slice(-2)}`;
   }
 
-  toThreeDigits(n: number): string {
-    return n.toString().padStart(3, '0');
-  }
+  toThreeDigits(n: number): string { return n.toString().padStart(3, '0'); }
 
   formatBytes(bytes: number, decimals = 2): string {
     if (!bytes) return '0 B';
-    const k = 1024;
-    const dm = Math.max(0, decimals);
+    const k = 1024; const dm = Math.max(0, decimals);
     const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
-    const value = parseFloat((bytes / Math.pow(k, i)).toFixed(dm));
-    return `${value} ${sizes[i]}`;
+    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
   }
 
   convertNumberToWords(amount: number): string {
@@ -1212,59 +1103,36 @@ export class SalesOrderComponent implements OnInit, AfterViewInit {
     return numToWords(amount);
   }
 
-  /* ===============================
-     MIR (Material Inspection Report)
-  =============================== */
   showMIRModal = false;
   selectedSOForMIR: any = null;
   mirForm: any = {};
 
-  formatDate(d: string) {
-    return d ? new Date(d).toLocaleDateString('en-GB') : '';
-  }
+  formatDate(d: string) { return d ? new Date(d).toLocaleDateString('en-GB') : ''; }
 
   openMIRModal(order?: any) {
-    // if (order) this.loadEditForm(order);
     const so = order ?? {
-      orderNo: this.salesOrderNo,
-      orderDate: this.salesOrderDate,
-      customerName: this.customerName,
-      items: this.itemsShow,
-      poNo: this.poNo,
-      poDate: this.poDate
+      orderNo: this.salesOrderNo, orderDate: this.salesOrderDate,
+      customerName: this.customerName, items: this.itemsShow,
+      poNo: this.poNo, poDate: this.poDate
     };
     this.selectedSOForMIR = so;
     this.mirForm = {
       items: (so.items || []).map((item: any) => ({
         materialDesc: [item.item || item.productName || '', item.uom ? `(${item.uom})` : ''].filter(Boolean).join(' '),
-        qtyInvoice: item.qty || 0,
-        batchNo: '',
-        selected: true,
+        qtyInvoice: item.qty || 0, batchNo: '', selected: true,
       })),
-      customerName: so.customerName || '',
-      reportNo: `MIR-${so.orderNo || ''}`,
+      customerName: so.customerName || '', reportNo: `MIR-${so.orderNo || ''}`,
       date: new Date().toISOString().split('T')[0],
-      poNoDate: so.poNo
-        ? `${so.poNo} / ${this.formatDate(so.poDate)}`
-        : '',
-      dispatchedOn: so.orderDate || '',
-      challanNo: '',
-      materialVerified: 'N/A',
-      damageOk: 'N/A',
-      mtcAvailable: 'N/A',
+      poNoDate: so.poNo ? `${so.poNo} / ${this.formatDate(so.poDate)}` : '',
+      dispatchedOn: so.orderDate || '', challanNo: '', materialVerified: 'N/A',
+      damageOk: 'N/A', mtcAvailable: 'N/A',
       transporter: so.transporterName || this.transporterName || '',
-      lrNo: '',
-      remarks: '',
-      preparedBy: '',
-      checkedBy: '',
-      approvedBy: ''
+      lrNo: '', remarks: '', preparedBy: '', checkedBy: '', approvedBy: ''
     };
     this.showMIRModal = true;
   }
 
-  closeMIRModal() {
-    this.showMIRModal = false;
-  }
+  closeMIRModal() { this.showMIRModal = false; }
 
   async generateMIR() {
     try {
@@ -1273,82 +1141,40 @@ export class SalesOrderComponent implements OnInit, AfterViewInit {
       const margin = 10;
       const safe = (v: any) => (v == null ? '' : String(v));
       const g = this.mirForm;
-
       let logoLoaded = false;
-      try {
-        const logoBase64 = await this.loadLogoAsBase64('assets/Navbharat logo.png');
-        doc.addImage(logoBase64, 'PNG', (pageWidth - 150) / 2, 0, 150, 30);
-        logoLoaded = true;
-      } catch { console.warn('Logo not loaded'); }
-
+      try { const logoBase64 = await this.loadLogoAsBase64('assets/Navbharat logo.png'); doc.addImage(logoBase64, 'PNG', (pageWidth - 150) / 2, 0, 150, 30); logoLoaded = true; } catch { }
       const startY = logoLoaded ? 50 : 20;
-      doc.setFontSize(12);
-      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12); doc.setFont('helvetica', 'bold');
       doc.text('MATERIALS INSPECTION REPORT (MIR)', pageWidth / 2, startY, { align: 'center' });
-      doc.setFontSize(10);
-      doc.setFont('helvetica', 'normal');
-
+      doc.setFontSize(10); doc.setFont('helvetica', 'normal');
       let y = startY + 10;
-      doc.text(`Customer Name: ${safe(g.customerName)}`, margin, y);
-      doc.text(`Report No: ${safe(g.reportNo)}`, pageWidth / 2, y);
-      y += 7;
-      doc.text(`PO No & Date: ${safe(g.poNoDate)}`, margin, y);
-      doc.text(`Date: ${safe(g.date)}`, pageWidth / 2, y);
-      y += 7;
-      doc.text(`Challan No: ${safe(g.challanNo)}`, margin, y);
-      doc.text(`Material Dispatched On: ${safe(g.dispatchedOn)}`, pageWidth / 2, y);
-      y += 10;
-
-      // Items table — only selected items
+      doc.text(`Customer Name: ${safe(g.customerName)}`, margin, y); doc.text(`Report No: ${safe(g.reportNo)}`, pageWidth / 2, y); y += 7;
+      doc.text(`PO No & Date: ${safe(g.poNoDate)}`, margin, y); doc.text(`Date: ${safe(g.date)}`, pageWidth / 2, y); y += 7;
+      doc.text(`Challan No: ${safe(g.challanNo)}`, margin, y); doc.text(`Material Dispatched On: ${safe(g.dispatchedOn)}`, pageWidth / 2, y); y += 10;
       const selectedItems = (g.items || []).filter((it: any) => it.selected !== false);
-      autoTable(doc, {
-        startY: y,
-        head: [['#', 'Material Description', 'Qty (Order)', 'Batch No']],
-        body: selectedItems.map((it: any, idx: number) => [String(idx + 1), safe(it.materialDesc), String(it.qtyInvoice ?? ''), safe(it.batchNo)]),
-        theme: 'grid',
-        headStyles: { fillColor: [30, 58, 95], textColor: 255, fontSize: 9 },
-        bodyStyles: { fontSize: 9 },
-        columnStyles: { 0: { cellWidth: 10 }, 2: { cellWidth: 28, halign: 'center' }, 3: { cellWidth: 28 } },
-        margin: { left: margin, right: margin },
-      });
+      autoTable(doc, { startY: y, head: [['#', 'Material Description', 'Qty (Order)', 'Batch No']], body: selectedItems.map((it: any, idx: number) => [String(idx + 1), safe(it.materialDesc), String(it.qtyInvoice ?? ''), safe(it.batchNo)]), theme: 'grid', headStyles: { fillColor: [30, 58, 95], textColor: 255, fontSize: 9 }, bodyStyles: { fontSize: 9 }, columnStyles: { 0: { cellWidth: 10 }, 2: { cellWidth: 28, halign: 'center' }, 3: { cellWidth: 28 } }, margin: { left: margin, right: margin } });
       y = (doc as any).lastAutoTable.finalY + 8;
-
-      doc.text(`Material Verified as per order: ${safe(g.materialVerified)}`, margin, y);
-      y += 7; doc.text(`Damage Acceptable: ${safe(g.damageOk)}`, margin, y);
-      y += 10; doc.text(`MTC Available: ${safe(g.mtcAvailable)}`, margin, y);
-      y += 7; doc.text(`Transporter: ${safe(g.transporter)}`, margin, y);
-      y += 7; doc.text(`LR No / Vehicle No: ${safe(g.lrNo)}`, margin, y);
-      y += 10; doc.text(`Remarks: ${safe(g.remarks)}`, margin, y);
-      y += 20;
-      doc.text(`Prepared By: ${safe(g.preparedBy)}`, margin, y);
-      doc.text(`Checked By: ${safe(g.checkedBy)}`, pageWidth / 2, y);
-      y += 10;
+      doc.text(`Material Verified as per order: ${safe(g.materialVerified)}`, margin, y); y += 7;
+      doc.text(`Damage Acceptable: ${safe(g.damageOk)}`, margin, y); y += 10;
+      doc.text(`MTC Available: ${safe(g.mtcAvailable)}`, margin, y); y += 7;
+      doc.text(`Transporter: ${safe(g.transporter)}`, margin, y); y += 7;
+      doc.text(`LR No / Vehicle No: ${safe(g.lrNo)}`, margin, y); y += 10;
+      doc.text(`Remarks: ${safe(g.remarks)}`, margin, y); y += 20;
+      doc.text(`Prepared By: ${safe(g.preparedBy)}`, margin, y); doc.text(`Checked By: ${safe(g.checkedBy)}`, pageWidth / 2, y); y += 10;
       doc.text(`Approved By: ${safe(g.approvedBy)}`, margin, y);
       doc.save(`MIR_${safe(g.reportNo) || 'Report'}.pdf`);
       this.closeMIRModal();
-    } catch (error) {
-      console.error('Error generating MIR:', error);
-      alert('Error generating MIR report');
-    }
+    } catch (error) { console.error('Error generating MIR:', error); alert('Error generating MIR report'); }
   }
 
   private loadLogoAsBase64(path: string): Promise<string> {
     return new Promise((resolve, reject) => {
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        canvas.width = img.width;
-        canvas.height = img.height;
-        canvas.getContext('2d')!.drawImage(img, 0, 0);
-        resolve(canvas.toDataURL('image/png'));
-      };
-      img.onerror = reject;
-      img.src = path;
+      const img = new Image(); img.crossOrigin = 'anonymous';
+      img.onload = () => { const canvas = document.createElement('canvas'); canvas.width = img.width; canvas.height = img.height; canvas.getContext('2d')!.drawImage(img, 0, 0); resolve(canvas.toDataURL('image/png')); };
+      img.onerror = reject; img.src = path;
     });
   }
 
-  /* ── C34: Send via Email ──────────────────────────────── */
   showEmailDropdown = false;
   emailPresets = ['ak@navbharatgroup.com', 'rs@navbharatgroup.com'];
 
@@ -1356,27 +1182,35 @@ export class SalesOrderComponent implements OnInit, AfterViewInit {
     this.showEmailDropdown = false;
     const subject = `Sales Order ${this.salesOrderNo} – ${this.selectedCompanyName || this.customerName}`;
     const body = `Dear Sir/Ma'am,\n\nPlease find attached Sales Order ${this.salesOrderNo}.\n\nRegards,\nNavbharat Insulation & Engg Co`;
-    const params = new URLSearchParams({ subject, body });
-    window.open(`mailto:${recipient}?${params.toString()}`);
+    window.open(`mailto:${recipient}?${new URLSearchParams({ subject, body }).toString()}`);
   }
 
-  // Drag & Drop
-  onDragOver(ev: DragEvent): void {
-    ev.preventDefault();
-    this.isDragActive = true;
-  }
+  onDragOver(ev: DragEvent): void { ev.preventDefault(); this.isDragActive = true; }
+  onDragLeave(ev: DragEvent): void { ev.preventDefault(); this.isDragActive = false; }
+  onDrop(ev: DragEvent): void { ev.preventDefault(); this.isDragActive = false; const dt = ev.dataTransfer; if (dt && dt.files.length) this.addFilesFromFileList(dt.files); }
 
-  onDragLeave(ev: DragEvent): void {
-    ev.preventDefault();
-    this.isDragActive = false;
-  }
-
-  onDrop(ev: DragEvent): void {
-    ev.preventDefault();
-    this.isDragActive = false;
-    const dt = ev.dataTransfer;
-    if (dt && dt.files.length) {
-      this.addFilesFromFileList(dt.files);
-    }
+  private async addReminder(opts: {
+    type: string; name: string; referenceNo: string;
+    date: string | null; daysFromNow: number; note: string;
+  }): Promise<void> {
+    try {
+      let reminderDate = opts.date;
+      if (!reminderDate) {
+        const d = new Date();
+        d.setDate(d.getDate() + opts.daysFromNow);
+        reminderDate = d.toISOString().slice(0, 10);
+      }
+      await this.apiService.add('reminders', {
+        date:         reminderDate,
+        time:         '10:00',
+        type:         opts.type,
+        name:         opts.name,
+        mobile:       '',
+        reference_no: opts.referenceNo,
+        note:         opts.note,
+        source:       'system',
+        status:       'pending',
+      });
+    } catch { /* reminder creation is non-critical */ }
   }
 }

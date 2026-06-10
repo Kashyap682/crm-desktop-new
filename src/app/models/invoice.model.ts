@@ -15,7 +15,7 @@ export interface InvoiceItem {
    PARTY DETAILS (Bill To / Ship To)
 ========================= */
 export interface PartyDetails {
-   customerId?: number | null;
+   customerId?: string | null;
    name: string;
    address: string;
    gstin: string;
@@ -55,7 +55,7 @@ export const DEFAULT_TAX_RATES: TaxRates = {
    MAIN INVOICE MODEL
 ========================= */
 export interface InvoiceModel {
-   id?: number;
+   id?: string;
 
    // Invoice Details
    invoiceNo: string;

@@ -1,7 +1,7 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { DBService } from '../../service/db.service';
+import { ApiService } from '../../service/api.service';
 import { saveAs } from 'file-saver';
 
 interface RfqItem {
@@ -33,10 +33,10 @@ interface RfqAddress {
 }
 
 interface RfqRecord {
-  id?: number;
+  id?: string;           // UUID
   rfqId: string;
   rfqDate: string;
-  inquiryId: string;
+  inquiryId: string;     // display string e.g. "INQ-001"
   vendorName: string;
   vendorAddress?: string;
   contactTitle?: string;
@@ -90,7 +90,88 @@ export class RfqComponent implements OnInit {
   inquiries: any[] = [];
   vendors: any[] = [];
 
-  constructor(private dbService: DBService) { }
+  constructor(private apiService: ApiService) { }
+
+  // ── Mapping helpers ──────────────────────────────────────
+
+  private toDbRow(rfq: RfqRecord): any {
+    const row: any = {
+      rfq_ref:           rfq.rfqId          || null,
+      rfq_date:          rfq.rfqDate         || null,
+      inquiry_ref:       rfq.inquiryId       || null,
+      vendor_name:       rfq.vendorName      || null,
+      vendor_address:    rfq.vendorAddress   || null,
+      contact_title:     rfq.contactTitle    || null,
+      contact_first_name: rfq.contactFirstName || null,
+      contact_last_name:  rfq.contactLastName  || null,
+      mobile:            rfq.mobile          || null,
+      email:             rfq.email           || null,
+      shipping_line1:    rfq.shippingAddress?.line1    || null,
+      shipping_line2:    rfq.shippingAddress?.line2    || null,
+      shipping_city:     rfq.shippingAddress?.city     || null,
+      shipping_state:    rfq.shippingAddress?.state    || null,
+      shipping_pincode:  rfq.shippingAddress?.pincode  || null,
+      shipping_country:  rfq.shippingAddress?.country  || null,
+      notes:             rfq.notes           || null,
+      other_terms:       rfq.otherTerms      || null,
+      items:             rfq.items           ?? [],
+      attachments:       rfq.attachments     ?? [],
+      status:            rfq.status          || 'DRAFT',
+    };
+    if (rfq.id) row.id = rfq.id;
+    return row;
+  }
+
+  private fromDbRow(row: any): RfqRecord {
+    return {
+      id:               row.id,
+      rfqId:            row.rfq_ref             || '',
+      rfqDate:          row.rfq_date            || '',
+      inquiryId:        row.inquiry_ref         || '',
+      vendorName:       row.vendor_name         || '',
+      vendorAddress:    row.vendor_address      || '',
+      contactTitle:     row.contact_title       || '',
+      contactFirstName: row.contact_first_name  || '',
+      contactLastName:  row.contact_last_name   || '',
+      mobile:           row.mobile              || '',
+      email:            row.email               || '',
+      shippingAddress: {
+        line1:    row.shipping_line1   || '',
+        line2:    row.shipping_line2   || '',
+        city:     row.shipping_city    || '',
+        state:    row.shipping_state   || '',
+        pincode:  row.shipping_pincode || '',
+        country:  row.shipping_country || '',
+      },
+      notes:       row.notes       || '',
+      otherTerms:  row.other_terms || '',
+      items:       Array.isArray(row.items)       ? row.items       : [],
+      attachments: Array.isArray(row.attachments) ? row.attachments : [],
+      status:      (row.status || 'DRAFT') as 'DRAFT' | 'SENT',
+      createdAt:   row.created_at || new Date().toISOString(),
+    };
+  }
+
+  private mapInquiry(row: any): any {
+    const refMatch = (row.inquiry_ref || '').match(/INQ-(\d+)/i);
+    return {
+      _uuid:       row.id,
+      id:          refMatch ? parseInt(refMatch[1], 10) : null,
+      companyName: row.company_name || '',
+      inquiryRef:  row.inquiry_ref  || '',
+      items:       Array.isArray(row.items) ? row.items : [],
+      date:        row.date         || '',
+    };
+  }
+
+  private mapVendor(row: any): any {
+    return {
+      id:             row.id,
+      companyName:    row.company_name    || '',
+      primaryContact: row.primary_contact || {},
+      officeAddress:  row.office_address  || {},
+    };
+  }
 
   private toInquiryId(value: any): number | null {
     if (value === null || value === undefined) return null;
@@ -111,14 +192,12 @@ export class RfqComponent implements OnInit {
     // Pre-fill form when navigated from inquiry "Raise RFQ" button
     const state = history.state as any;
     if (state?.fromInquiry && state?.item) {
-      this.resetForm();                                     // sets rfqId, date, shipping defaults
+      this.resetForm();
 
-      // Set inquiry ID — works for both saved inquiries and new (unsaved) preview IDs
       if (state.inquiryId) {
         this.inquiryId = state.inquiryId;
       }
 
-      // Map the inquiry item fields → RFQ item fields
       const it = state.item;
       this.items = [{
         product:   it.productName || it.product || '',
@@ -139,13 +218,12 @@ export class RfqComponent implements OnInit {
         fromInquiry: true
       }];
 
-      // Auto-select vendor if inventory had one linked
       if (state.vendorName) {
         this.vendorName = state.vendorName;
-        this.onVendorSelect(state.vendorName); // fills contactFirstName/Last, mobile, email, address
+        this.onVendorSelect(state.vendorName);
       }
 
-      this.showForm = true;   // open directly to the new-RFQ form, skip the list
+      this.showForm = true;
     }
   }
 
@@ -162,18 +240,22 @@ export class RfqComponent implements OnInit {
   }
 
   async loadInquiries() {
-    this.inquiries = await this.dbService.getAll('inquiries');
+    const rows = await this.apiService.getAll('inquiries');
+    this.inquiries = rows.map((r: any) => this.mapInquiry(r));
   }
 
   async loadVendors() {
-    this.vendors = await this.dbService.getAll('vendors');
+    const rows = await this.apiService.getAll('vendors');
+    this.vendors = rows.map((r: any) => this.mapVendor(r));
   }
 
   async loadRfqs() {
-    const all = await this.dbService.getAll('rfqs');
-    this.rfqList = all.sort((a: any, b: any) =>
-      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    );
+    const rows = await this.apiService.getAll('rfqs');
+    this.rfqList = rows
+      .map((r: any) => this.fromDbRow(r))
+      .sort((a: RfqRecord, b: RfqRecord) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
   }
 
   createNewRfq() {
@@ -213,35 +295,32 @@ export class RfqComponent implements OnInit {
 
   onInquirySelect(displayId: string) {
     if (!displayId) return;
-    // Match by display id like "INQ-001 | Company" or raw numeric id
     const match = displayId.match(/INQ-(\d+)/i);
-    const selectedId = this.toInquiryId(displayId);
-    const inq = match
-      ? this.inquiries.find((i: any) => this.toInquiryId(i.id) === parseInt(match[1], 10))
-      : this.inquiries.find((i: any) => this.toInquiryId(i.id) === selectedId || i.inquiryId === displayId);
+    const seqNum = match ? parseInt(match[1], 10) : null;
+    const inq = seqNum != null
+      ? this.inquiries.find((i: any) => i.id === seqNum)
+      : this.inquiries.find((i: any) => i.inquiryRef === displayId);
     if (!inq) return;
 
     this.rfqDate = inq.date || this.rfqDate;
-    if (inq.vendorName) this.vendorName = inq.vendorName;
 
-    // Autofill items from inquiry items
     if (inq.items && inq.items.length > 0) {
       this.items = inq.items.map((it: any) => ({
-        product: it.product || it.item || it.productName || '',
-        form: it.form || '',
-        make: it.productMake || it.make || '',
-        density: it.density || '',
+        product:   it.product || it.item || it.productName || '',
+        form:      it.form      || '',
+        make:      it.productMake || it.make || '',
+        density:   it.density   || '',
         thickness: it.thickness || '',
-        size: it.size || '',
-        fsk: it.fsk || '',
-        grade: it.grade || '',
-        alloy: it.alloy || '',
-        temper: it.temper || '',
-        nb: it.nb || '',
-        maxTemp: it.maxTemp || '',
-        color: it.color || '',
-        qty: it.qty || null,
-        uom: it.uom || '',
+        size:      it.size      || '',
+        fsk:       it.fsk       || '',
+        grade:     it.grade     || '',
+        alloy:     it.alloy     || '',
+        temper:    it.temper    || '',
+        nb:        it.nb        || '',
+        maxTemp:   it.maxTemp   || '',
+        color:     it.color     || '',
+        qty:       it.qty       || null,
+        uom:       it.uom       || '',
         fromInquiry: true
       }));
     }
@@ -252,16 +331,14 @@ export class RfqComponent implements OnInit {
     const v = this.vendors.find((x: any) => x.companyName === name);
     if (!v) return;
     const pc = v.primaryContact || {};
-    this.contactTitle     = pc.title       || '';
-    this.contactFirstName = pc.firstName   || v.contactFirstName || '';
-    this.contactLastName  = pc.lastName    || v.contactLastName  || '';
-    this.mobile = pc.mobile || v.mobile || '';
-    this.email = pc.email || v.email || '';
-    const oa = v.officeAddress;
-    if (oa) {
-      this.vendorAddress = [oa.line1, oa.line2, oa.city, oa.state, oa.pincode, oa.country]
-        .filter(Boolean).join(', ');
-    }
+    this.contactTitle     = pc.title     || '';
+    this.contactFirstName = pc.firstName || '';
+    this.contactLastName  = pc.lastName  || '';
+    this.mobile           = pc.mobile    || '';
+    this.email            = pc.email     || '';
+    const oa = v.officeAddress || {};
+    this.vendorAddress = [oa.line1, oa.line2, oa.city, oa.state, oa.pincode, oa.country]
+      .filter(Boolean).join(', ');
   }
 
   addItem() {
@@ -290,7 +367,7 @@ export class RfqComponent implements OnInit {
 
   buildPayload(status: 'DRAFT' | 'SENT'): RfqRecord {
     return {
-      ...(this.editingRfq?.id != null ? { id: this.editingRfq.id } : {}),
+      ...(this.editingRfq?.id ? { id: this.editingRfq.id } : {}),
       rfqId: this.rfqId,
       rfqDate: this.rfqDate,
       inquiryId: this.inquiryId,
@@ -313,11 +390,7 @@ export class RfqComponent implements OnInit {
 
   async saveRfq() {
     const payload = this.buildPayload('DRAFT');
-    if (payload.id != null) {
-      await this.dbService.put('rfqs', payload);
-    } else {
-      await this.dbService.add('rfqs', payload);
-    }
+    await this.apiService.put('rfqs', this.toDbRow(payload));
     await this.loadRfqs();
     this.showForm = false;
   }
@@ -328,27 +401,27 @@ export class RfqComponent implements OnInit {
 
   editRfq(rfq: RfqRecord) {
     this.editingRfq = rfq;
-    this.rfqId = rfq.rfqId;
-    this.rfqDate = rfq.rfqDate;
-    this.inquiryId = rfq.inquiryId;
-    this.vendorName = rfq.vendorName;
-    this.vendorAddress = rfq.vendorAddress || '';
-    this.contactTitle     = rfq.contactTitle || '';
+    this.rfqId           = rfq.rfqId;
+    this.rfqDate         = rfq.rfqDate;
+    this.inquiryId       = rfq.inquiryId;
+    this.vendorName      = rfq.vendorName;
+    this.vendorAddress   = rfq.vendorAddress || '';
+    this.contactTitle    = rfq.contactTitle || '';
     this.contactFirstName = rfq.contactFirstName;
     this.contactLastName  = rfq.contactLastName;
-    this.mobile = rfq.mobile;
-    this.email = rfq.email;
-    this.items = JSON.parse(JSON.stringify(rfq.items));
+    this.mobile          = rfq.mobile;
+    this.email           = rfq.email;
+    this.items           = JSON.parse(JSON.stringify(rfq.items));
     this.shippingAddress = { ...rfq.shippingAddress };
-    this.notes = rfq.notes;
-    this.otherTerms = rfq.otherTerms;
-    this.attachments = rfq.attachments || [];
-    this.showForm = true;
+    this.notes           = rfq.notes;
+    this.otherTerms      = rfq.otherTerms;
+    this.attachments     = rfq.attachments || [];
+    this.showForm        = true;
   }
 
   async deleteRfq(rfq: RfqRecord) {
     if (!confirm(`Delete ${rfq.rfqId}?`)) return;
-    await this.dbService.delete('rfqs', rfq.id!);
+    await this.apiService.delete('rfqs', rfq.id!);
     await this.loadRfqs();
   }
 
@@ -389,12 +462,10 @@ export class RfqComponent implements OnInit {
       pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, paperSize: 9 }
     });
 
-    // Column widths
     const colWidths: number[] = [20, 28, 4, 20, 28];
     for (let i = 5; i < totalCols; i++) colWidths.push(16);
     ws.columns = colWidths.map((w: number) => ({ width: w }));
 
-    // Palette (ARGB)
     const NAVY = 'FF1E3A5F';
     const NAVY2 = 'FF2E5FA3';
     const WHITE = 'FFFFFFFF';
@@ -419,7 +490,6 @@ export class RfqComponent implements OnInit {
 
     let r = 0;
 
-    // Row 1: Company banner
     r++;
     ws.getRow(r).height = 30;
     {
@@ -431,7 +501,6 @@ export class RfqComponent implements OnInit {
       mc(r, 1, r, totalCols);
     }
 
-    // Row 2: Address sub-banner
     r++;
     ws.getRow(r).height = 16;
     {
@@ -443,11 +512,9 @@ export class RfqComponent implements OnInit {
       mc(r, 1, r, totalCols);
     }
 
-    // Row 3: spacer
     r++;
     ws.getRow(r).height = 6;
 
-    // Row 4: Document title
     r++;
     ws.getRow(r).height = 32;
     {
@@ -459,26 +526,24 @@ export class RfqComponent implements OnInit {
       mc(r, 1, r, totalCols);
     }
 
-    // Row 5: spacer
     r++;
     ws.getRow(r).height = 8;
 
-    // Info grid (2-pane)
     const titleStr = rfq.contactTitle ? rfq.contactTitle.replace(/\.?$/, '.') + ' ' : '';
     const contactName = `${titleStr}${safe(rfq.contactFirstName)} ${safe(rfq.contactLastName)}`.trim();
     const leftInfo: [string, string][] = ([
-      ['RFQ Number', safe(rfq.rfqId)],
-      ['RFQ Date', safe(rfq.rfqDate)],
-      ['Inquiry Reference', safe(rfq.inquiryId)],
-      ['Document Status', safe(rfq.status)],
+      ['RFQ Number',          safe(rfq.rfqId)],
+      ['RFQ Date',            safe(rfq.rfqDate)],
+      ['Inquiry Reference',   safe(rfq.inquiryId)],
+      ['Document Status',     safe(rfq.status)],
     ] as [string, string][]).filter(([, v]) => v !== '');
 
     const rightInfo: [string, string][] = ([
-      ['Vendor Name', safe(rfq.vendorName)],
+      ['Vendor Name',    safe(rfq.vendorName)],
       ['Vendor Address', safe(rfq.vendorAddress)],
       ['Contact Person', contactName],
-      ['Mobile', safe(rfq.mobile)],
-      ['Email', safe(rfq.email)],
+      ['Mobile',         safe(rfq.mobile)],
+      ['Email',          safe(rfq.email)],
     ] as [string, string][]).filter(([, v]) => v !== '');
 
     const styleLabel = (c: any) => {
@@ -508,7 +573,6 @@ export class RfqComponent implements OnInit {
       }
     }
 
-    // Delivery address section
     r++;
     ws.getRow(r).height = 8;
     r++;
@@ -538,7 +602,6 @@ export class RfqComponent implements OnInit {
       mc(r, 1, r, totalCols);
     }
 
-    // Product requirements section
     r++;
     ws.getRow(r).height = 8;
     r++;
@@ -552,7 +615,6 @@ export class RfqComponent implements OnInit {
       mc(r, 1, r, totalCols);
     }
 
-    // Table header row
     r++;
     ws.getRow(r).height = 22;
     const tableHeaders = ['#', ...usedFields.map(([label]: [string, ProductKey]) => label)];
@@ -565,7 +627,6 @@ export class RfqComponent implements OnInit {
       border(c, 'FF8FA8D0');
     });
 
-    // Table data rows
     rfq.items.forEach((it: RfqItem, idx: number) => {
       r++;
       ws.getRow(r).height = 18;
@@ -588,51 +649,6 @@ export class RfqComponent implements OnInit {
       });
     });
 
-    // Notes section
-    // if (rfq.notes && rfq.notes.trim()) {
-    //   r++;
-    //   ws.getRow(r).height = 8;
-    //   r++;
-    //   ws.getRow(r).height = 20;
-    //   { const c = ws.getCell(r, 1);
-    //     c.value = 'NOTES';
-    //     c.font = { bold: true, size: 9, color: { argb: WHITE }, name: 'Calibri' };
-    //     fill(c, NAVY);
-    //     c.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
-    //     mc(r, 1, r, totalCols); }
-    //   r++;
-    //   ws.getRow(r).height = 48;
-    //   { const c = ws.getCell(r, 1);
-    //     c.value = rfq.notes;
-    //     c.font = { size: 9, name: 'Calibri', color: { argb: DARK } };
-    //     fill(c, 'FFFFF9E6');
-    //     c.alignment = { vertical: 'top', horizontal: 'left', indent: 1, wrapText: true };
-    //     mc(r, 1, r, totalCols); }
-    // }
-
-    // // Terms section
-    // if (rfq.otherTerms && rfq.otherTerms.trim()) {
-    //   r++;
-    //   ws.getRow(r).height = 8;
-    //   r++;
-    //   ws.getRow(r).height = 20;
-    //   { const c = ws.getCell(r, 1);
-    //     c.value = 'TERMS & CONDITIONS';
-    //     c.font = { bold: true, size: 9, color: { argb: WHITE }, name: 'Calibri' };
-    //     fill(c, NAVY);
-    //     c.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
-    //     mc(r, 1, r, totalCols); }
-    //   r++;
-    //   ws.getRow(r).height = 48;
-    //   { const c = ws.getCell(r, 1);
-    //     c.value = rfq.otherTerms;
-    //     c.font = { size: 9, name: 'Calibri', color: { argb: DARK } };
-    //     fill(c, 'FFFFF9E6');
-    //     c.alignment = { vertical: 'top', horizontal: 'left', indent: 1, wrapText: true };
-    //     mc(r, 1, r, totalCols); }
-    // }
-
-    // Footer
     r++;
     ws.getRow(r).height = 8;
     r++;
@@ -645,25 +661,9 @@ export class RfqComponent implements OnInit {
       c.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
       mc(r, 1, r, footerSplit);
     }
-    // {
-    //   const c = ws.getCell(r, footerSplit + 2);
-    //   c.value = 'For Navbharat Insulation & Engg Co';
-    //   c.font = { bold: true, size: 9, name: 'Calibri', color: { argb: DARK } };
-    //   c.alignment = { vertical: 'middle', horizontal: 'center' };
-    //   mc(r, footerSplit + 2, r, totalCols);
-    // }
 
     r++;
-    // ws.getRow(r).height = 16;
-    // {
-    //   const c = ws.getCell(r, footerSplit + 2);
-    //   c.value = 'Authorised Signatory';
-    //   c.font = { size: 8, italic: true, name: 'Calibri', color: { argb: SUBTEXT } };
-    //   c.alignment = { vertical: 'middle', horizontal: 'center' };
-    //   mc(r, footerSplit + 2, r, totalCols);
-    // }
 
-    // Download
     const buffer = await workbook.xlsx.writeBuffer();
     saveAs(
       new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
@@ -673,15 +673,14 @@ export class RfqComponent implements OnInit {
 
   get inquiryOptions(): any[] {
     return this.inquiries.map((i: any) => {
-      const num = String(i.id || '').padStart(3, '0');
-      const id = i.inquiryId || `INQ-${num}`;
+      const id = i.inquiryRef || `INQ-${String(i.id || 0).padStart(3, '0')}`;
       const company = i.companyName || '';
       return { label: `${id} | ${company}`, value: id };
     });
   }
 
   private generateRfqId(): string {
-    const maxNum = this.rfqList.reduce((max: number, r: any) => {
+    const maxNum = this.rfqList.reduce((max: number, r: RfqRecord) => {
       const match = (r.rfqId || '').match(/^RFQ-(\d{1,4})$/i);
       return match ? Math.max(max, parseInt(match[1])) : max;
     }, 0);

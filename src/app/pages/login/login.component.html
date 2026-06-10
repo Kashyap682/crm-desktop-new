@@ -1,0 +1,50 @@
+<div class="login-container">
+
+  <div class="login-card">
+
+    <div class="login-header">
+      <img src="assets/LOGO.jpg" alt="Navbharat" class="login-logo" />
+      <h1>NAVBHARAT</h1>
+      <p>CRM Desktop</p>
+    </div>
+
+    <form (ngSubmit)="onSubmit()" #loginForm="ngForm" class="login-form">
+
+      <div class="field">
+        <label for="email">Email</label>
+        <input
+          id="email"
+          type="email"
+          [(ngModel)]="email"
+          name="email"
+          placeholder="you@navbharat.com"
+          autocomplete="email"
+          required
+        />
+      </div>
+
+      <div class="field">
+        <label for="password">Password</label>
+        <input
+          id="password"
+          type="password"
+          [(ngModel)]="password"
+          name="password"
+          placeholder="••••••••"
+          autocomplete="current-password"
+          required
+        />
+      </div>
+
+      <div class="error-msg" *ngIf="error">{{ error }}</div>
+
+      <button type="submit" [disabled]="loading" class="login-btn">
+        <span *ngIf="!loading">Sign In</span>
+        <span *ngIf="loading" class="spinner"></span>
+      </button>
+
+    </form>
+
+  </div>
+
+</div>

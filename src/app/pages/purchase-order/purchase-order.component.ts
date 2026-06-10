@@ -1,8 +1,8 @@
-import { Component } from '@angular/core';
+import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
-import { DBService } from '../../service/db.service';
+import { ApiService } from '../../service/api.service';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -13,14 +13,13 @@ import autoTable from 'jspdf-autotable';
   templateUrl: './purchase-order.component.html',
   styleUrls: ['./purchase-order.component.css']
 })
-export class PurchaseOrderComponent {
-
-  // private companyLogo = 'data:image/png;base64,UklGRkgCAABXRUJQVlA4WAoAAAAwAAAAQAAAEAAASUNDUMgBAAAAAAHIAAAAAAQwAABtbnRyUkdCIFhZWiAH4AABAAEAAAAAAABhY3NwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAA9tYAAQAAAADTLQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAlkZXNjAAAA8AAAACRyWFlaAAABFAAAABRnWFlaAAABKAAAABRiWFlaAAABPAAAABR3dHB0AAABUAAAABRyVFJDAAABZAAAAChnVFJDAAABZAAAAChiVFJDAAABZAAAAChjcHJ0AAABjAAAADxtbHVjAAAAAAAAAAEAAAAMZW5VUwAAAAgAAAAcAHMAUgBHAEJYWVogAAAAAAAAb6IAADj1AAADkFhZWiAAAAAAAABimQAAt4UAABjaWFlaIAAAAAAAACSgAAAPhAAAts9YWVogAAAAAAAA9tYAAQAAAADTLXBhcmEAAAAAAAQAAAACZmYAAPKnAAANWQAAE9AAAApbAAAAAAAAAABtbHVjAAAAAAAAAAEAAAAMZW5VUwAAACAAAAAcAEcAbwBvAGcAbABlACAASQBuAGMALgAgADIAMAAxADZBTFBIHAAAAAEPMP8REUJt2zaM9f/PTh+zR/R/Ahw7aH8vTgBWUDggNgAAAFADAJ0BKkEAEQAuOSiUSiEjo6ODgDhLSAAFzrNvTVgoaLGAAP781E1//0G5O/eyS+pwAAAAAA==';
+export class PurchaseOrderComponent implements OnInit {
 
   showSubjectPopup = false;
   coverLetterSubject = '';
 
   vendors: any[] = [];
+  inventoryItems: any[] = [];
   selectedVendorId: string | null = null;
 
   /* ================= UI STATE ================= */
@@ -82,25 +81,147 @@ export class PurchaseOrderComponent {
   files: File[] = [];
   isDragActive = false;
 
-  /* ---------------- DATA ---------------- */
-  customers: any[] = [];
-  allItems: any[] = [];
-
   /* ================= UI HELPERS ================= */
-  get draftOrders() {
-    return this.draftPOs;
+  get draftOrders() { return this.draftPOs; }
+  get submittedOrders() { return this.submittedPOs; }
+
+  // ── Mapping helpers ──────────────────────────────────────
+
+  private toDbRow(po: any): any {
+    const row: any = {
+      po_ref:                 po.poNumber              || null,
+      po_date:                po.poDate                || null,
+      inquiry_ref:            po.inquiryRef            || null,
+      vendor_name:            po.vendorName            || null,
+      vendor_ref:             po.vendorId              || null,
+      offer_ref:              po.offerRef              || null,
+      billing_address:        po.billingAddress        || null,
+      delivery_address:       po.deliveryAddress       || null,
+      vendor_gst:             po.vendorGST             || null,
+      contact_person:         po.contactPerson         || null,
+      contact_info:           po.contactInfo           || null,
+      payment_terms:          po.paymentTerms          || null,
+      credit_days:            po.creditDays            ?? null,
+      delivery_terms:         po.deliveryTerms         || null,
+      expected_delivery_date: po.expectedDeliveryDate  || null,
+      transporter_name:       po.transporterName       || null,
+      transport_mode:         po.transportMode         || null,
+      delivery_location:      po.deliveryLocation      || null,
+      items:                  po.items                 ?? [],
+      freight_charges:        po.freightCharges        ?? 0,
+      grand_total:            po.grandTotal            ?? 0,
+      status:                 po.status                || 'DRAFT',
+    };
+    if (po.id) row.id = po.id;
+    return row;
   }
 
-  get submittedOrders() {
-    return this.submittedPOs;
+  private fromDbRow(row: any): any {
+    return {
+      id:                   row.id,
+      poNumber:             row.po_ref               || '',
+      poDate:               row.po_date              || '',
+      inquiryRef:           row.inquiry_ref          || '',
+      vendorName:           row.vendor_name          || '',
+      vendorId:             row.vendor_ref           || '',
+      offerRef:             row.offer_ref            || '',
+      billingAddress:       row.billing_address      || '',
+      deliveryAddress:      row.delivery_address     || '',
+      vendorGST:            row.vendor_gst           || '',
+      contactPerson:        row.contact_person       || '',
+      contactInfo:          row.contact_info         || '',
+      paymentTerms:         row.payment_terms        || 'Advance',
+      creditDays:           row.credit_days          ?? null,
+      deliveryTerms:        row.delivery_terms       || 'FOB',
+      expectedDeliveryDate: row.expected_delivery_date || '',
+      transporterName:      row.transporter_name     || '',
+      transportMode:        row.transport_mode       || 'Road',
+      deliveryLocation:     row.delivery_location    || 'Warehouse',
+      items:                Array.isArray(row.items) ? row.items : [],
+      freightCharges:       row.freight_charges      ?? 0,
+      grandTotal:           row.grand_total          ?? 0,
+      status:               row.status               || 'DRAFT',
+    };
   }
+
+  private mapVendor(row: any): any {
+    return {
+      id:              row.id,
+      vendorId:        row.vendor_ref      || '',
+      companyName:     row.company_name    || '',
+      gst:             row.gst             || '',
+      primaryContact:  row.primary_contact || {},
+      officeAddress:   row.office_address  || {},
+      billing:         row.billing         || {},
+      billingAddress:  row.billing         || {},
+      shipping:        row.shipping        || {},
+      shippingAddress: row.shipping        || {},
+      mobile:          row.mobile          || '',
+      email:           row.email           || '',
+    };
+  }
+
+  private mapInquiry(row: any): any {
+    const refMatch = (row.inquiry_ref || '').match(/INQ-(\d+)/i);
+    const seqId = refMatch ? parseInt(refMatch[1], 10) : (row.seq_no ?? null);
+    return {
+      _uuid:        row.id,
+      id:           seqId,
+      companyName:  row.company_name  || '',
+      customerName: row.customer_name || '',
+      date:         row.date          || '',
+      items:        Array.isArray(row.items) ? row.items : [],
+      freight:      row.freight       ?? 0,
+      freightCharges: row.freight_charges ?? 0,
+      inquiryRef:   row.inquiry_ref   || '',
+    };
+  }
+
+  private mapOffer(row: any): any {
+    return {
+      id:              row.id,
+      offerRef:        row.offer_ref       || '',
+      offerStatus:     row.offer_status    || '',
+      status:          row.status          || 'active',
+      inquiryNo:       row.inquiry_no      ?? null,
+      customerName:    row.customer_name   || '',
+      items:           Array.isArray(row.items) ? row.items : [],
+      paymentTerms:    row.payment_terms   || '',
+      freightCharges:  row.freight_charges ?? 0,
+      deliveryTerms:   row.delivery_terms  || '',
+      gstType:         row.gst_type        || 'cgst_sgst',
+    };
+  }
+
+  private toInquiryId(value: any): number | null {
+    if (value === null || value === undefined) return null;
+    if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+    const raw = String(value).trim();
+    if (!raw) return null;
+    const match = raw.match(/INQ-(\d+)/i);
+    if (match) return parseInt(match[1], 10);
+    const num = Number(raw);
+    return Number.isFinite(num) ? num : null;
+  }
+
+  constructor(
+    private router: Router,
+    private apiService: ApiService
+  ) { }
 
   async ngOnInit() {
     await this.loadPurchaseOrders();
     await this.loadVendors();
-    this.allInquiries = await this.dbService.getAll('inquiries');
-    this.allOffers = await this.dbService.getAll('offers');
-    this.allItems = await this.dbService.getAll('inventory');
+
+    const [inqRows, offerRows, invRows] = await Promise.all([
+      this.apiService.getAll('inquiries').catch(() => []),
+      this.apiService.getAll('offers').catch(() => []),
+      this.apiService.getAll('inventory').catch(() => []),
+    ]);
+    this.allInquiries = inqRows.map((r: any) => this.mapInquiry(r));
+    this.allOffers = offerRows.map((r: any) => this.mapOffer(r));
+
+    this.inventoryItems = invRows;
 
     // Auto-fill from inquiry + offer navigation state
     const navState = (history.state || {}) as any;
@@ -115,15 +236,15 @@ export class PurchaseOrderComponent {
       this.inquiryRef = displayId;
 
       if (offer) {
-        // Prefill from offer (has rates, terms, freight)
         this.offerRef = offer.offerRef || '';
         if (offer.paymentTerms) this.paymentTerms = offer.paymentTerms;
         if (offer.freightCharges) this.freightCharges = offer.freightCharges;
         if (offer.items && offer.items.length > 0) {
+          const allItems: any[] = this.inventoryItems;
           this.items = offer.items.map((it: any, idx: number) => {
             const inqItem = inq.items?.[idx];
             const itemName = (it.name || it.productName || '').toLowerCase().trim();
-            const invItem = this.allItems.find((p: any) => {
+            const invItem = allItems.find((p: any) => {
               const invName = (p.displayName || p.name || '').toLowerCase().trim();
               return invName.includes(itemName) || itemName.includes(invName);
             });
@@ -152,23 +273,6 @@ export class PurchaseOrderComponent {
     if (!id) return '';
     return `INQ-${String(id).padStart(3, '0')}`;
   }
-
-  private toInquiryId(value: any): number | null {
-    if (value === null || value === undefined) return null;
-    if (typeof value === 'number') return Number.isFinite(value) ? value : null;
-    const raw = String(value).trim();
-    if (!raw) return null;
-    const match = raw.match(/INQ-(\d+)/i);
-    if (match) return parseInt(match[1], 10);
-    const num = Number(raw);
-    return Number.isFinite(num) ? num : null;
-  }
-
-  constructor(
-    private router: Router,
-    private dbService: DBService
-  ) { }
-
 
   /* ================= BASIC ACTIONS ================= */
 
@@ -208,7 +312,6 @@ export class PurchaseOrderComponent {
   }
 
   goBackToList() {
-    console.log('⬅️ Navigating back to Purchase Order list');
     this.router.navigateByUrl('/', { skipLocationChange: true }).then(() => {
       this.router.navigate(['/purchase-order']);
     });
@@ -334,7 +437,6 @@ export class PurchaseOrderComponent {
       doc.text(`Material Received On: ${safe(g.receivedOn)}`, pageWidth / 2, y);
       y += 10;
 
-      // Items table — only selected items
       const selectedItems = (g.items || []).filter((it: any) => it.selected !== false);
       autoTable(doc, {
         startY: y,
@@ -348,23 +450,15 @@ export class PurchaseOrderComponent {
       });
       y = (doc as any).lastAutoTable.finalY + 8;
 
-      doc.text(`Weighing Slip: ${safe(g.weighingSlip)}`, margin, y);
-      y += 7;
-      doc.text(`Material Acceptable: ${safe(g.materialOk)}`, margin, y);
-      y += 7;
-      doc.text(`Damage Acceptable: ${safe(g.damageOk)}`, margin, y);
-      y += 10;
-      doc.text(`MTC Available: ${safe(g.mtcAvailable)}`, margin, y);
-      y += 7;
-      doc.text(`Transporter: ${safe(g.transporter)}`, margin, y);
-      y += 7;
-      doc.text(`LR No / Vehicle No: ${safe(g.lrNo)}`, margin, y);
-      y += 10;
-      doc.text(`Remarks: ${safe(g.remarks)}`, margin, y);
-      y += 20;
+      doc.text(`Weighing Slip: ${safe(g.weighingSlip)}`, margin, y); y += 7;
+      doc.text(`Material Acceptable: ${safe(g.materialOk)}`, margin, y); y += 7;
+      doc.text(`Damage Acceptable: ${safe(g.damageOk)}`, margin, y); y += 10;
+      doc.text(`MTC Available: ${safe(g.mtcAvailable)}`, margin, y); y += 7;
+      doc.text(`Transporter: ${safe(g.transporter)}`, margin, y); y += 7;
+      doc.text(`LR No / Vehicle No: ${safe(g.lrNo)}`, margin, y); y += 10;
+      doc.text(`Remarks: ${safe(g.remarks)}`, margin, y); y += 20;
       doc.text(`Prepared By: ${safe(g.preparedBy)}`, margin, y);
-      doc.text(`Checked By: ${safe(g.checkedBy)}`, pageWidth / 2, y);
-      y += 10;
+      doc.text(`Checked By: ${safe(g.checkedBy)}`, pageWidth / 2, y); y += 10;
       doc.text(`Approved By: ${safe(g.approvedBy)}`, margin, y);
 
       doc.save(`GRR_${safe(g.reportNo) || 'Report'}.pdf`);
@@ -426,7 +520,6 @@ export class PurchaseOrderComponent {
 
   editDraft(po: any) {
     this.editingPO = po;
-
     this.poNumber = po.poNumber;
     this.poDate = po.poDate;
     this.inquiryRef = po.inquiryRef || '';
@@ -443,43 +536,35 @@ export class PurchaseOrderComponent {
     this.transporterName = po.transporterName || '';
     this.transportMode = po.transportMode || 'Road';
     this.deliveryLocation = po.deliveryLocation || 'Warehouse';
-    this.items = JSON.parse(JSON.stringify(po.items));
-    this.freightCharges = po.freightCharges;
-    this.purchaseOrderStatus = po.status;
-
+    this.items = JSON.parse(JSON.stringify(po.items || []));
+    if (!this.items.length) this.items = [{ item: '', qty: 1, uom: '', hsn: '', rate: 0, disc: 0, discountType: '₹', gst: 18, total: 0 }];
+    this.freightCharges = po.freightCharges || 0;
+    this.purchaseOrderStatus = po.status || 'DRAFT';
     this.showForm = true;
   }
 
   onDragOver(ev: DragEvent): void {
     ev.preventDefault();
     this.isDragActive = true;
-    const el = (ev.currentTarget as HTMLElement);
-    el.classList.add('active');
+    (ev.currentTarget as HTMLElement).classList.add('active');
   }
 
   onDragLeave(ev: DragEvent): void {
     ev.preventDefault();
     this.isDragActive = false;
-    const el = (ev.currentTarget as HTMLElement);
-    el.classList.remove('active');
+    (ev.currentTarget as HTMLElement).classList.remove('active');
   }
 
   onDrop(ev: DragEvent): void {
     ev.preventDefault();
     this.isDragActive = false;
-    const el = (ev.currentTarget as HTMLElement);
-    el.classList.remove('active');
-
+    (ev.currentTarget as HTMLElement).classList.remove('active');
     const dt = ev.dataTransfer;
     if (!dt) return;
-    if (dt.files && dt.files.length) {
-      this.addFilesFromFileList(dt.files);
-    }
+    if (dt.files && dt.files.length) this.addFilesFromFileList(dt.files);
   }
 
   private buildPurchaseOrderPayload(existing?: any) {
-    console.group('🧾 buildPurchaseOrderPayload');
-
     const payload: any = {
       poNumber: this.poNumber,
       poDate: this.poDate,
@@ -503,22 +588,10 @@ export class PurchaseOrderComponent {
       freightCharges: this.freightCharges,
       grandTotal: this.getGrandTotal(),
       status: this.purchaseOrderStatus,
-      createdAt: existing?.createdAt ?? new Date().toISOString()
     };
-
-    if (existing?.id != null) {
-      payload.id = existing.id;
-      console.log('✏️ Editing existing PO, id =', existing.id);
-    } else {
-      console.log('🆕 Creating NEW PO (no id yet)');
-    }
-
-    console.log('📦 Final payload:', payload);
-    console.groupEnd();
-
+    if (existing?.id != null) payload.id = existing.id;
     return payload;
   }
-
 
   private addFilesFromFileList(list: FileList): void {
     for (let i = 0; i < list.length; i++) {
@@ -528,40 +601,6 @@ export class PurchaseOrderComponent {
       if (!exists) this.files.push(f);
     }
   }
-
-  /**
-   * ✅ FIXED: Now correctly finds vendor by database ID
-   */
-  // onVendorSelect(vendorId: number) {
-  //   console.log('🔍 onVendorSelect called with ID:', vendorId);
-  //   console.log('📋 Available vendors:', this.vendors);
-  //   console.log('SELECTED VENDOR ID:', vendorId);
-
-  //   // Find vendor by database ID (not vendorId field)
-  //   const v = this.vendors.find(x => x.id === vendorId);
-
-  //   console.log('✅ Found vendor:', v);
-
-  //   if (!v) {
-  //     console.warn('⚠️ Vendor not found with id:', vendorId);
-  //     return;
-  //   }
-
-  //   this.vendorName = v.companyName || '';
-  //   this.vendorId = v.vendorId || '';
-  //   this.vendorGST = v.gst || '';
-  //   this.contactPerson = v.contactPerson || '';
-  //   this.contactInfo = `${v.mobile || ''} ${v.email || ''}`.trim();
-
-  //   this.billingAddress = this.formatAddress(v.billing);
-  //   this.deliveryAddress = this.formatAddress(v.shipping);
-
-  //   console.log('✅ Auto-filled vendor details:', {
-  //     vendorName: this.vendorName,
-  //     vendorId: this.vendorId,
-  //     vendorGST: this.vendorGST
-  //   });
-  // }
 
   get inquiryOptions(): { label: string; value: string }[] {
     return this.allInquiries.map((inq: any) => {
@@ -575,39 +614,28 @@ export class PurchaseOrderComponent {
   onInquiryRefSelect(inquiryDisplayId: string) {
     if (!inquiryDisplayId) return;
 
-    // Find the inquiry by display id
     const match = inquiryDisplayId.match(/INQ-(\d+)/i);
     if (!match) return;
     const numId = parseInt(match[1], 10);
     const inq = this.allInquiries.find((i: any) => this.toInquiryId(i.id) === numId);
     if (!inq) return;
 
-    // PO date from inquiry date
+    const allItems: any[] = this.inventoryItems;
+
     if (inq.date) this.poDate = inq.date;
 
-    // Autofill items from inquiry items
     if (inq.items && inq.items.length > 0) {
       this.items = inq.items.map((it: any) => {
         const productName = it.product || it.item || it.productName || '';
-        // const invItem = this.allItems.find((p: any) =>
-        //   (p.displayName || p.name || '').toLowerCase() === productName.toLowerCase()
-        // );
-        const invItem = this.allItems.find((p: any) => {
+        const invItem = allItems.find((p: any) => {
           const invName = (p.displayName || p.name || '').toLowerCase().trim();
           const inqName = productName.toLowerCase().trim();
-
           return invName.includes(inqName) || inqName.includes(invName);
         });
-        console.log('🔍 Matching:', {
-          inquiryItem: productName,
-          matchedInventory: invItem
-        });
-
         const line = {
           item: productName,
           qty: it.qty || 1,
-          // uom: it.uom || invItem?.uom || invItem?.unit || '',
-          uom: it.uom || invItem?.uom || invItem?.unit || 'Nos', // fallback
+          uom: it.uom || invItem?.uom || invItem?.unit || 'Nos',
           hsn: it.hsn || invItem?.hsn || '',
           rate: it.rate || invItem?.price || invItem?.rate || 0,
           disc: 0,
@@ -620,34 +648,25 @@ export class PurchaseOrderComponent {
       });
     }
 
-    // Autofill freight from inquiry
     const inqFreight = parseFloat(inq.freight || inq.freightCharges || 0);
     if (inqFreight > 0) this.freightCharges = inqFreight;
 
-    // Find offer for this inquiry
     const inqId = this.toInquiryId(inq.id);
     const relatedOffer = this.allOffers.find((o: any) =>
       this.toInquiryId(o.inquiryNo) === inqId && o.status !== 'superseded'
     );
 
     if (relatedOffer) {
-      const y = new Date().getFullYear();
-      const generatedRef = relatedOffer.id
-        ? `NIEC/MDD/${y}/${String(relatedOffer.id).padStart(4, '0')}`
-        : '';
-      this.offerRef = relatedOffer.offerRef || generatedRef || relatedOffer.offerNo || relatedOffer.offerNumber || '';
+      this.offerRef = relatedOffer.offerRef || '';
       if (relatedOffer.paymentTerms) this.paymentTerms = relatedOffer.paymentTerms;
-      // Pull freight from offer if not already from inquiry
       if (!inqFreight) {
-        const offerFreight = parseFloat(relatedOffer.freight || relatedOffer.freightCharges || 0);
+        const offerFreight = parseFloat(relatedOffer.freightCharges || 0);
         if (offerFreight > 0) this.freightCharges = offerFreight;
       }
       if (relatedOffer.items && relatedOffer.items.length > 0) {
-        // Merge offer rates into existing inquiry items, or replace if items list was empty
-        const hasItems = this.items.length > 0 && this.items.some(x => x.item);
+        const hasItems = this.items.length > 0 && this.items.some((x: any) => x.item);
         if (hasItems) {
-          // Update rates from offer items where rate is 0
-          this.items.forEach((line, idx) => {
+          this.items.forEach((line: any, idx: number) => {
             if (!line.rate && relatedOffer.items[idx]) {
               line.rate = relatedOffer.items[idx].rate || 0;
               this.recalculateLine(line);
@@ -687,16 +706,12 @@ export class PurchaseOrderComponent {
 
     this.vendorName = v.companyName || '';
     this.vendorId = v.vendorId || '';
-
-    // GST: check top-level gst, then officeAddress.gstin
     this.vendorGST = v.gst || offAddr.gstin || '';
 
-    // Contact person: title + first + last (format: "Ms. Tisya Pawar"), with fallbacks
     const pcTitle = pc.title ? pc.title.replace(/\.?$/, '.') : '';
     const pcName = [pcTitle, pc.firstName, pc.lastName].filter(Boolean).join(' ').trim();
-    this.contactPerson = pcName || offAddr.contactPerson || v.contactPerson || '';
+    this.contactPerson = pcName || offAddr.contactPerson || '';
 
-    // Contact info: mobile + email from primaryContact, then officeAddress, then top-level
     const mobile = pc.mobile || offAddr.mobile || v.mobile || '';
     const email = pc.email || offAddr.email || v.email || '';
     this.contactInfo = [mobile, email].filter(Boolean).join(' / ');
@@ -710,25 +725,10 @@ export class PurchaseOrderComponent {
     this.deliveryAddress = hasShipping
       ? this.formatVendorAddress(shippingRaw)
       : this.formatVendorAddress(v.officeAddress || billing);
-
-    // Payment terms come from the offer, not the vendor — do not overwrite here
   }
-
-  // private formatVendorAddress(addr: any): string {
-  //   if (!addr) return '';
-  //   return [
-  //     addr.line1 || addr.street,
-  //     addr.line2 || addr.area,
-  //     addr.city,
-  //     addr.state,
-  //     addr.pincode,
-  //     addr.country
-  //   ].filter(Boolean).join(', ');
-  // }
 
   private formatVendorAddress(addr: any): string {
     if (!addr) return '';
-
     return [
       addr.line1 || addr.street || addr.address,
       addr.line2 || addr.area,
@@ -740,689 +740,335 @@ export class PurchaseOrderComponent {
   }
 
   async loadVendors() {
-    this.vendors = await this.dbService.getAll('vendors');
-    console.log('📥 Loaded vendors:', this.vendors);
+    try {
+      const rows = await this.apiService.getAll('vendors');
+      this.vendors = rows.map((r: any) => this.mapVendor(r));
+    } catch (error) {
+      console.error('❌ Failed to load vendors:', error);
+      this.vendors = [];
+    }
   }
 
   async loadPurchaseOrders() {
-    console.group('📥 loadPurchaseOrders()');
+    try {
+      const rows = await this.apiService.getAll('purchaseOrders');
+      const all = rows.map((r: any) => this.fromDbRow(r));
+      this.draftPOs = all.filter((o: any) => o.status === 'DRAFT');
+      this.submittedPOs = all.filter((o: any) => o.status === 'SUBMITTED');
+      this.approvedPOs = all.filter((o: any) => o.status === 'APPROVED');
+    } catch (error) {
+      console.error('❌ Failed to load purchase orders:', error);
+    }
+  }
 
-    const all = await this.dbService.getAllPurchaseOrders();
-    console.log('📄 Raw purchaseOrders from DB:', all);
-
-    this.draftPOs = all.filter(o => o.status === 'DRAFT');
-    this.submittedPOs = all.filter(o => o.status === 'SUBMITTED');
-    this.approvedPOs = all.filter(o => o.status === 'APPROVED');
-
-    console.log('🟦 Draft POs:', this.draftPOs);
-    console.log('🟨 Submitted POs:', this.submittedPOs);
-    console.log('🟩 Approved POs:', this.approvedPOs);
-
-    console.groupEnd();
+  private getPurchaseOrderByNo(poNumber: string): any | null {
+    const all = [...this.draftPOs, ...this.submittedPOs, ...this.approvedPOs];
+    return all.find(o => o.poNumber === poNumber) || null;
   }
 
   async saveDraft() {
-    console.group('💾 saveDraft()');
-
     this.purchaseOrderStatus = 'DRAFT';
-    console.log('📌 Status set to DRAFT');
-
     const payload = this.buildPurchaseOrderPayload(this.editingPO);
-
-    console.log('➡️ Calling dbService.addOrUpdatePurchaseOrder');
-    await this.dbService.addOrUpdatePurchaseOrder(payload);
-
-    console.log('🔄 Reloading purchase orders from DB');
-    await this.loadPurchaseOrders();
-
-    this.editingPO = null;
-    console.log('✅ Draft saved successfully');
-
-    console.groupEnd();
-    alert('Purchase Order saved as Draft');
+    try {
+      await this.apiService.put('purchaseOrders', this.toDbRow(payload));
+      await this.loadPurchaseOrders();
+      this.editingPO = null;
+      alert('Purchase Order saved as Draft');
+    } catch (error) {
+      console.error('❌ Failed to save draft:', error);
+      alert('❌ Failed to save Purchase Order');
+    }
   }
 
-
   async submitPO() {
-    console.group('📤 submitPO()');
-
     this.purchaseOrderStatus = 'SUBMITTED';
-    console.log('📌 Status set to SUBMITTED');
-
-    const existing = this.editingPO
-      ?? await this.dbService.getPurchaseOrderByNo(this.poNumber);
-
+    const existing = this.editingPO ?? this.getPurchaseOrderByNo(this.poNumber);
     const payload = this.buildPurchaseOrderPayload(existing);
-
-    console.log('➡️ Calling dbService.addOrUpdatePurchaseOrder');
-    await this.dbService.addOrUpdatePurchaseOrder(payload);
-
-    console.log('🔄 Reloading purchase orders from DB');
-    await this.loadPurchaseOrders();
-
-    this.editingPO = null;
-    console.log('✅ Purchase Order submitted');
-
-    console.groupEnd();
-    alert('Purchase Order submitted');
+    try {
+      await this.apiService.put('purchaseOrders', this.toDbRow(payload));
+      await this.loadPurchaseOrders();
+      this.editingPO = null;
+      alert('Purchase Order submitted');
+    } catch (error) {
+      console.error('❌ Failed to submit PO:', error);
+      alert('❌ Failed to submit Purchase Order');
+    }
   }
 
   async approvePO() {
-    console.group('✅ approvePO()');
-
     this.purchaseOrderStatus = 'APPROVED';
-    console.log('📌 Status set to APPROVED');
-
-    const existing = this.editingPO
-      ?? await this.dbService.getPurchaseOrderByNo(this.poNumber);
-
+    const existing = this.editingPO ?? this.getPurchaseOrderByNo(this.poNumber);
     const payload = this.buildPurchaseOrderPayload(existing);
-
-    console.log('➡️ Calling dbService.addOrUpdatePurchaseOrder');
-    await this.dbService.addOrUpdatePurchaseOrder(payload);
-
-    console.log('🔄 Reloading purchase orders from DB');
-    await this.loadPurchaseOrders();
-
-    this.editingPO = null;
-    console.log('🎉 Purchase Order approved');
-
-    console.groupEnd();
-    alert('Purchase Order approved');
+    try {
+      await this.apiService.put('purchaseOrders', this.toDbRow(payload));
+      await this.loadPurchaseOrders();
+      this.editingPO = null;
+      alert('Purchase Order approved');
+    } catch (error) {
+      console.error('❌ Failed to approve PO:', error);
+      alert('❌ Failed to approve Purchase Order');
+    }
   }
 
   async approveFromTable(po: any) {
-    console.group('✔️ approveFromTable()');
-
-    console.log('📄 PO before approval:', po);
-    po.status = 'APPROVED';
-
-    console.log('➡️ Updating PO in DB');
-    await this.dbService.addOrUpdatePurchaseOrder(po);
-
-    console.log('🔄 Reloading purchase orders');
-    await this.loadPurchaseOrders();
-
-    console.groupEnd();
-    alert('Purchase Order approved');
+    try {
+      await this.apiService.put('purchaseOrders', this.toDbRow({ ...po, status: 'APPROVED' }));
+      await this.loadPurchaseOrders();
+      alert('Purchase Order approved');
+    } catch (error) {
+      console.error('❌ Failed to approve PO:', error);
+      alert('❌ Failed to approve Purchase Order');
+    }
   }
 
-
   async saveFromTable(po: any) {
-    po.status = 'SUBMITTED';
-    await this.dbService.addOrUpdatePurchaseOrder(po);
-    await this.loadPurchaseOrders();
-    alert('Purchase Order saved');
+    try {
+      await this.apiService.put('purchaseOrders', this.toDbRow({ ...po, status: 'SUBMITTED' }));
+      await this.loadPurchaseOrders();
+      alert('Purchase Order saved');
+    } catch (error) {
+      console.error('❌ Failed to save PO:', error);
+      alert('❌ Failed to save Purchase Order');
+    }
   }
 
   openGRRModalForPO(po: any) {
-    // Load PO into form fields then open GRR modal
     this.editDraft(po);
     this.openGRRModal();
   }
 
   async deleteDraft(po: any) {
-    console.group('🗑️ deleteDraft()');
-
-    console.log('📄 PO to delete:', po);
-
     const confirmed = confirm(`Delete Purchase Order ${po.poNumber}?`);
-    if (!confirmed) {
-      console.log('❌ Delete cancelled by user');
-      console.groupEnd();
-      return;
+    if (!confirmed) return;
+    try {
+      await this.apiService.delete('purchaseOrders', po.id);
+      await this.loadPurchaseOrders();
+    } catch (error) {
+      console.error('❌ Failed to delete PO:', error);
+      alert('❌ Failed to delete Purchase Order');
     }
-
-    console.log('➡️ Deleting PO with id:', po.id);
-    await this.dbService.deletePurchaseOrder(po.id);
-
-    console.log('🔄 Reloading purchase orders');
-    await this.loadPurchaseOrders();
-
-    console.groupEnd();
   }
 
   /* ================= PDF GENERATION ================= */
 
   downloadPurchaseOrderPDF() {
-    console.log("well well well")
-    // Set default subject based on first item
     this.coverLetterSubject = this.items.length > 0 && this.items[0].item
       ? `Purchase Order for Supply of ${this.items[0].item}`
       : 'Purchase Order for Supply of Materials as per attached schedule';
-
-    // Show the popup
     this.showSubjectPopup = true;
   }
 
-  // NEW: Cancel subject input
   cancelSubjectInput() {
     this.showSubjectPopup = false;
     this.coverLetterSubject = '';
   }
 
-  // NEW: Confirm subject and generate PDF
   async confirmSubjectAndGeneratePDF() {
-    if (!this.coverLetterSubject.trim()) {
-      return;
-    }
-
-    // Hide popup
+    if (!this.coverLetterSubject.trim()) return;
     this.showSubjectPopup = false;
-
-    // Generate PDF with subject
     const subject = this.coverLetterSubject.trim();
 
     let stampBase64: string | null = null;
-    try {
-      stampBase64 = await this.loadLogoAsBase64('assets/stamp.jpeg');
-    } catch { /* stamp optional */ }
+    try { stampBase64 = await this.loadLogoAsBase64('assets/stamp.jpeg'); } catch { }
 
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
 
-    // PAGE 1: COVER LETTER (with user-provided subject)
     this.generateCoverLetterPage(doc, pageWidth, pageHeight, subject, stampBase64);
-
-    // PAGE 2: TERMS & CONDITIONS
     doc.addPage();
     this.generateTermsAndConditionsPage(doc, pageWidth, pageHeight, stampBase64);
-
-    // PAGE 3: QUANTITY, RATES & TECHNICAL SCHEDULE
     doc.addPage();
     this.generateQuantityRatesPage(doc, pageWidth, pageHeight, stampBase64);
 
-    // Save PDF
     doc.save(`PO_${this.poNumber.replace(/\//g, '_')}.pdf`);
-
-    // Clear subject for next time
     this.coverLetterSubject = '';
   }
 
   private generateCoverLetterPage(doc: any, pageWidth: number, pageHeight: number, subject: string, stampBase64: string | null = null) {
     let yPosition = 10;
-
-    // ============ LOGO SECTION ============
     const logoPath = 'assets/LOGO.jpg';
-
-    const logoWidth = 40;
-    const logoHeight = 20;
-    const logoX = (pageWidth - logoWidth) / 2;
-
-    try {
-      doc.addImage(logoPath, 'PNG', logoX, yPosition, logoWidth, logoHeight);
-      yPosition += logoHeight + 5;
-    } catch (error) {
-      console.warn('Logo could not be loaded from:', logoPath, error);
-    }
-
+    const logoWidth = 40; const logoHeight = 20;
+    try { doc.addImage(logoPath, 'PNG', (pageWidth - logoWidth) / 2, yPosition, logoWidth, logoHeight); yPosition += logoHeight + 5; } catch { }
     yPosition += 5;
 
-    // ============ COMPANY HEADER ============
-    doc.setFontSize(16);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Navbharat Insulation & Engg. Co.', pageWidth / 2, yPosition, { align: 'center' });
-
-    yPosition += 7;
-    doc.setFontSize(9);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Office : A N House, 4th Floor, TPS-III, 31st Road, Bandra(W), MUMBAI - 400050',
-      pageWidth / 2, yPosition, { align: 'center' });
-
-    yPosition += 5;
+    doc.setFontSize(16); doc.setFont('helvetica', 'bold');
+    doc.text('Navbharat Insulation & Engg. Co.', pageWidth / 2, yPosition, { align: 'center' }); yPosition += 7;
+    doc.setFontSize(9); doc.setFont('helvetica', 'bold');
+    doc.text('Office : A N House, 4th Floor, TPS-III, 31st Road, Bandra(W), MUMBAI - 400050', pageWidth / 2, yPosition, { align: 'center' }); yPosition += 5;
     doc.setFont('helvetica', 'normal');
-    doc.text('Tele Fax (022) 16441702, 26441740 : info@navbharatgroup.com',
-      pageWidth / 2, yPosition, { align: 'center' });
+    doc.text('Tele Fax (022) 16441702, 26441740 : info@navbharatgroup.com', pageWidth / 2, yPosition, { align: 'center' }); yPosition += 15;
 
-    yPosition += 15;
-
-    // ============ PO NUMBER AND DATE ============
-    doc.setFontSize(12);
-    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(12); doc.setFont('helvetica', 'normal');
     doc.text(this.poNumber, 15, yPosition);
+    const poDate = this.poDate ? new Date(this.poDate).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' }) : new Date().toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    doc.text(`Date: ${poDate}`, pageWidth - 15, yPosition, { align: 'right' }); yPosition += 15;
 
-    const poDate = this.poDate ? new Date(this.poDate).toLocaleDateString('en-IN', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric'
-    }) : new Date().toLocaleDateString('en-IN', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric'
-    });
-    doc.text(`Date: ${poDate}`, pageWidth - 15, yPosition, { align: 'right' });
-
-    yPosition += 15;
-
-    // ============ VENDOR ADDRESS ============
-    doc.setFont('helvetica', 'bold');
-    doc.text('To,', 15, yPosition);
-    yPosition += 6;
-
+    doc.setFont('helvetica', 'bold'); doc.text('To,', 15, yPosition); yPosition += 6;
     doc.setFont('helvetica', 'normal');
-    if (this.vendorName) {
-      const vendorLines = doc.splitTextToSize(this.vendorName, 120);
-      doc.text(vendorLines, 15, yPosition);
-      yPosition += vendorLines.length * 5;
-    }
-
-    if (this.billingAddress) {
-      const addressLines = doc.splitTextToSize(this.billingAddress, 120);
-      doc.text(addressLines, 15, yPosition);
-      yPosition += addressLines.length * 5;
-    }
-
+    if (this.vendorName) { const vl = doc.splitTextToSize(this.vendorName, 120); doc.text(vl, 15, yPosition); yPosition += vl.length * 5; }
+    if (this.billingAddress) { const al = doc.splitTextToSize(this.billingAddress, 120); doc.text(al, 15, yPosition); yPosition += al.length * 5; }
     yPosition += 10;
 
-    // ============ SUBJECT (USER PROVIDED FROM POPUP) ============
-    doc.setFont('helvetica', 'normal');
-    doc.text(`Sub. : ${subject}`, 15, yPosition);
-
-    yPosition += 10;
-
-    // ============ LETTER BODY ============
-    doc.text('Dear Sir,', 15, yPosition);
-
-    yPosition += 10;
-
+    doc.setFont('helvetica', 'normal'); doc.text(`Sub. : ${subject}`, 15, yPosition); yPosition += 10;
+    doc.text('Dear Sir,', 15, yPosition); yPosition += 10;
     const bodyText = `This refers to our requirement & reference to your final offer thru WA/email Dtd ${poDate}, we are pleased to place an order on you towards supply as mentioned in the subject above.`;
     const bodyLines = doc.splitTextToSize(bodyText, pageWidth - 30);
-    doc.text(bodyLines, 15, yPosition);
-    yPosition += bodyLines.length * 5 + 5;
-
-    doc.setFontSize(11);
-    doc.text('Schedule of Terms & Condition and Technical Data are enclosed.', 15, yPosition);
-
-    yPosition += 15;
-
-    // ============ CLOSING ============
-    doc.setFontSize(12);
-    doc.text('Thanking You,', 15, yPosition);
-    yPosition += 8;
-    doc.text('Truly Yours,', 15, yPosition);
-    yPosition += 6;
-    doc.text('For, Navbharat Insulation & Engg. Co.', 15, yPosition);
-
-    yPosition += 4;
+    doc.text(bodyLines, 15, yPosition); yPosition += bodyLines.length * 5 + 5;
+    doc.setFontSize(11); doc.text('Schedule of Terms & Condition and Technical Data are enclosed.', 15, yPosition); yPosition += 15;
+    doc.setFontSize(12); doc.text('Thanking You,', 15, yPosition); yPosition += 8;
+    doc.text('Truly Yours,', 15, yPosition); yPosition += 6;
+    doc.text('For, Navbharat Insulation & Engg. Co.', 15, yPosition); yPosition += 4;
     if (stampBase64) { doc.addImage(stampBase64, 'JPEG', 15, yPosition, 30, 22); }
-    yPosition += 26;
-
-    doc.text('Authorised Signatory', 15, yPosition);
+    yPosition += 26; doc.text('Authorised Signatory', 15, yPosition);
   }
 
   private generateTermsAndConditionsPage(doc: any, pageWidth: number, pageHeight: number, stampBase64: string | null = null) {
     let yPosition = 15;
-
-    // ============ HEADER ============
-    doc.setFontSize(16);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Navbharat Insulation & Engg. Co.', pageWidth / 2, yPosition, { align: 'center' });
-
-    yPosition += 8;
-    doc.text('PURCHASE ORDER', pageWidth / 2, yPosition, { align: 'center' });
-
-    yPosition += 7;
-    doc.setFontSize(11);
-    doc.text('TERMS & CONDITIONS', pageWidth / 2, yPosition, { align: 'center' });
-
-    yPosition += 7;
+    doc.setFontSize(16); doc.setFont('helvetica', 'bold');
+    doc.text('Navbharat Insulation & Engg. Co.', pageWidth / 2, yPosition, { align: 'center' }); yPosition += 8;
+    doc.text('PURCHASE ORDER', pageWidth / 2, yPosition, { align: 'center' }); yPosition += 7;
+    doc.setFontSize(11); doc.text('TERMS & CONDITIONS', pageWidth / 2, yPosition, { align: 'center' }); yPosition += 7;
     doc.setFontSize(12);
-    const poDate = this.poDate ? new Date(this.poDate).toLocaleDateString('en-IN', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric'
-    }) : new Date().toLocaleDateString('en-IN');
-    doc.text(`ORDER REFERENCE : ${this.poNumber} Dt. ${poDate}`,
-      pageWidth / 2, yPosition, { align: 'center' });
+    const poDate = this.poDate ? new Date(this.poDate).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' }) : new Date().toLocaleDateString('en-IN');
+    doc.text(`ORDER REFERENCE : ${this.poNumber} Dt. ${poDate}`, pageWidth / 2, yPosition, { align: 'center' }); yPosition += 10;
 
-    yPosition += 10;
-
-    // ============ TERMS IN TWO-COLUMN FORMAT ============
-    const leftCol = 15;
-    const colonCol = 58;
-    const rightCol = 62;
-    const maxTextWidth = pageWidth - rightCol - 15;
-
+    const leftCol = 15, colonCol = 58, rightCol = 62, maxTextWidth = pageWidth - rightCol - 15;
     doc.setFontSize(11);
-
-    // Helper function to add a term with proper spacing
     const addTerm = (label: string, value: string, isBold: boolean = false) => {
-      doc.setFont('helvetica', 'normal');
-      doc.text(label, leftCol, yPosition);
-      doc.text(':', colonCol, yPosition, { align: 'center' });
-
-      if (isBold) {
-        doc.setFont('helvetica', 'bold');
-      }
-
+      doc.setFont('helvetica', 'normal'); doc.text(label, leftCol, yPosition); doc.text(':', colonCol, yPosition, { align: 'center' });
+      if (isBold) doc.setFont('helvetica', 'bold');
       const valueLines = doc.splitTextToSize(value, maxTextWidth);
       doc.text(valueLines, rightCol, yPosition);
-
-      // Calculate proper spacing based on number of lines
-      yPosition += valueLines.length * 5 + 1; // 5mm per line + 1mm gap
+      yPosition += valueLines.length * 5 + 1;
     };
 
-    // 1. Unit Rate
     addTerm('Unit Rate', 'As per Quantity & Rate Schedule', true);
-
-    // 2. Quantity
     addTerm('Quantity', 'As per Quantity & Rate Schedule', true);
-
-    // 3. P & F Charges
-    const pfCharges = this.freightCharges > 0 ? `₹${this.freightCharges.toFixed(2)}` : 'Included';
-    addTerm('P & F Charges', pfCharges, false);
-
-    // 4. Quantity Variation
+    addTerm('P & F Charges', this.freightCharges > 0 ? `₹${this.freightCharges.toFixed(2)}` : 'Included', false);
     addTerm('Quantity Variation', 'Not Applicable', false);
-
-    // 5. Taxes & Forms
     const taxRate = this.items.length > 0 && this.items[0].gst ? this.items[0].gst : 18;
     addTerm('Taxes & Forms', `IGST @ ${taxRate}% - Extra on Unit Rate`, false);
-
-    // 6. Transportation
-    const transportText = this.transportMode && this.transporterName
-      ? `${this.transportMode} - ${this.transporterName}`
-      : this.transportMode || 'Road - To be arranged';
+    const transportText = this.transportMode && this.transporterName ? `${this.transportMode} - ${this.transporterName}` : this.transportMode || 'Road - To be arranged';
     addTerm('Transportation', transportText, false);
-
-    // 7. Transit Insurance
     addTerm('Transit Insurance', 'At your Cost', false);
-
-    // 8. Packing
     addTerm('Packing', 'Standard Packing', false);
-
-    // 9. Delivery Period
-    const deliveryPeriod = this.expectedDeliveryDate
-      ? new Date(this.expectedDeliveryDate).toLocaleDateString('en-IN')
-      : 'Immediate';
-    addTerm('Delivery Period', deliveryPeriod, true);
-
-    // 10. Payment Terms
+    addTerm('Delivery Period', this.expectedDeliveryDate ? new Date(this.expectedDeliveryDate).toLocaleDateString('en-IN') : 'Immediate', true);
     addTerm('Payment Terms', this.paymentTerms || '100% Advance agst Proforma Invoice', false);
-
-    // 11. Test Certificates
-    addTerm('Test Certificates',
-      'Manufacturers Test Certificate (in original) will be required Prior to despatch of material',
-      false);
-
-    // 12. Discrepancy in Supplies
-    addTerm('Discrepancy in Supplies',
-      'Short Supplies / Non Specified materials / Damaged Materials shall be replaced at no extra cost.',
-      false);
-
-    // 13. Communication Address
-    const commAddr = `All original documents i.e. invoice, despatch documents shall be sent to our following address:\nNavbharat Insulation & Engg. Co.\nA N House, 4th Floor, TPS III, 31st Road, Opp. Shopper Stop, Linking Road, Bandra (W), Mumbai - 400 050`;
-    addTerm('Communication Address', commAddr, false);
-
-    // 14. Ship To / Delivery Address
-    if (this.deliveryAddress) {
-      addTerm('Ship To / Delivery Address', this.deliveryAddress, false);
-    } else {
-      addTerm('Ship To / Delivery Address',
-        'Behind the Screaming Elevator, Somewhere Between Floors, Void, State, India',
-        false);
-    }
-
-    // 15. Contact Person
-    const contactText = this.contactPerson && this.contactInfo
-      ? `${this.contactPerson}`
-      : this.contactPerson || 'To be confirmed';
-    addTerm('Contact Person', contactText, true);
-
-    // 16. Bill To / Billing Address
-    const billAddr = `Navbharat Insulation & Engg. Co.\nA N House, 4th Floor, TPS III, 31st Road, Opp. Shopper Stop, Linking Road, Bandra (W), Mumbai - 400 050`;
-    addTerm('Bill To / Billing Address', billAddr, true);
-
-    // 17. GSTIN
-    const gstText = `Navbharat Insulation & Engg. Co.\n27AAHPK4195P1ZZ    State Name : Maharashtra, Code : 27`;
-    addTerm('GSTIN', gstText, true);
-
-    // 18. Road Permit / Way Bill
+    addTerm('Test Certificates', 'Manufacturers Test Certificate (in original) will be required Prior to despatch of material', false);
+    addTerm('Discrepancy in Supplies', 'Short Supplies / Non Specified materials / Damaged Materials shall be replaced at no extra cost.', false);
+    addTerm('Communication Address', `All original documents i.e. invoice, despatch documents shall be sent to our following address:\nNavbharat Insulation & Engg. Co.\nA N House, 4th Floor, TPS III, 31st Road, Opp. Shopper Stop, Linking Road, Bandra (W), Mumbai - 400 050`, false);
+    addTerm('Ship To / Delivery Address', this.deliveryAddress || 'To be confirmed', false);
+    addTerm('Contact Person', this.contactPerson || 'To be confirmed', true);
+    addTerm('Bill To / Billing Address', `Navbharat Insulation & Engg. Co.\nA N House, 4th Floor, TPS III, 31st Road, Opp. Shopper Stop, Linking Road, Bandra (W), Mumbai - 400 050`, true);
+    addTerm('GSTIN', `Navbharat Insulation & Engg. Co.\n27AAHPK4195P1ZZ    State Name : Maharashtra, Code : 27`, true);
     addTerm('Road Permit / Way Bill', 'E-Way bill required.', false);
+    addTerm('Jurisdiction', 'Any dispute arising in the said order shall subject to Mumbai Jurisdiction', false);
+    addTerm('Despatch Instructions', `Documents to be sent with the lorry -\n1) Invoice, 2) Delivery Challan, 3) Packing List,\n4) Test Certificate(Original), 5) Lorry receipt\nNote - ONE Set of all the above documents to be sent at communication address.`, false);
 
-    // 19. Jurisdiction
-    addTerm('Jurisdiction',
-      'Any dispute arising in the said order shall subject to Mumbai Jurisdiction',
-      false);
-
-    // 20. Despatch Instructions
-    const despatchText = `Documents to be sent with the lorry -\n1) Invoice, 2) Delivery Challan, 3) Packing List,\n4) Test Certificate(Original), 5) Lorry receipt\nNote - ONE Set of all the above documents to be sent at communication address.`;
-    addTerm('Despatch Instructions', despatchText, false);
-
-    // 21. Special Instructions
-    doc.setFont('helvetica', 'normal');
-    doc.text('Special Instructions', leftCol, yPosition);
-    doc.text(':', colonCol, yPosition, { align: 'center' });
+    doc.setFont('helvetica', 'normal'); doc.text('Special Instructions', leftCol, yPosition); doc.text(':', colonCol, yPosition, { align: 'center' });
     doc.setFont('helvetica', 'bold');
-    const specialText = `1) Rates mentioned above will remain fixed & firm till the completion of supply against this order`;
-    const specialLines = doc.splitTextToSize(specialText, maxTextWidth);
-    doc.text(specialLines, rightCol, yPosition);
-    yPosition += specialLines.length * 5 + 8;
+    const specialLines = doc.splitTextToSize(`1) Rates mentioned above will remain fixed & firm till the completion of supply against this order`, maxTextWidth);
+    doc.text(specialLines, rightCol, yPosition); yPosition += specialLines.length * 5 + 8;
 
-    // ============ SIGNATURE BLOCKS ============
-    doc.setFontSize(12);
-    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(12); doc.setFont('helvetica', 'normal');
     doc.text('For, Navbharat Insulation & Engg. Co.', 15, yPosition);
-    doc.setFontSize(11);
-    doc.text('Signed', pageWidth - 15, yPosition, { align: 'right' });
-
+    doc.setFontSize(11); doc.text('Signed', pageWidth - 15, yPosition, { align: 'right' });
     yPosition += 6;
     if (stampBase64) { doc.addImage(stampBase64, 'JPEG', 15, yPosition, 30, 22); }
     yPosition += 30;
-
-    doc.setFontSize(11);
-    doc.text('Authorised Signatory', 15, yPosition);
-    doc.text(`For ${this.vendorName || 'Polter Inc.'}`, pageWidth - 15, yPosition, { align: 'right' });
-
-    yPosition += 5;
-    doc.text('Accepted as above', pageWidth - 15, yPosition, { align: 'right' });
+    doc.setFontSize(11); doc.text('Authorised Signatory', 15, yPosition);
+    doc.text(`For ${this.vendorName || 'Vendor'}`, pageWidth - 15, yPosition, { align: 'right' });
+    yPosition += 5; doc.text('Accepted as above', pageWidth - 15, yPosition, { align: 'right' });
   }
 
   private generateQuantityRatesPage(doc: any, pageWidth: number, pageHeight: number, stampBase64: string | null = null) {
     let yPosition = 15;
-
-    // Header
-    doc.setFontSize(16);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Navbharat Insulation & Engg. Co.', pageWidth / 2, yPosition, { align: 'center' });
-
-    yPosition += 8;
-    doc.text('PURCHASE ORDER', pageWidth / 2, yPosition, { align: 'center' });
-
-    yPosition += 7;
-    doc.setFontSize(11);
-    doc.text('Quantity & Rate Schedule', pageWidth / 2, yPosition, { align: 'center' });
-
-    yPosition += 7;
+    doc.setFontSize(16); doc.setFont('helvetica', 'bold');
+    doc.text('Navbharat Insulation & Engg. Co.', pageWidth / 2, yPosition, { align: 'center' }); yPosition += 8;
+    doc.text('PURCHASE ORDER', pageWidth / 2, yPosition, { align: 'center' }); yPosition += 7;
+    doc.setFontSize(11); doc.text('Quantity & Rate Schedule', pageWidth / 2, yPosition, { align: 'center' }); yPosition += 7;
     doc.setFontSize(12);
-    const poDate = this.poDate ? new Date(this.poDate).toLocaleDateString('en-IN', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric'
-    }) : new Date().toLocaleDateString('en-IN');
-    doc.text(`ORDER REFERENCE : ${this.poNumber} Dt. ${poDate}`,
-      pageWidth / 2, yPosition, { align: 'center' });
+    const poDate = this.poDate ? new Date(this.poDate).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' }) : new Date().toLocaleDateString('en-IN');
+    doc.text(`ORDER REFERENCE : ${this.poNumber} Dt. ${poDate}`, pageWidth / 2, yPosition, { align: 'center' }); yPosition += 10;
 
-    yPosition += 10;
-
-    // Items Table
-    const tableData = this.items.map((item: any, index: number) => {
-      const specifications = item.specifications ||
-        (item.hsn ? `HSN: ${item.hsn}` : '-');
-
-      return [
-        (index + 1).toString(),
-        item.item || '-',
-        item.hsn || '-',
-        specifications,
-        item.qty.toString(),
-        item.uom || 'Kg',
-        item.rate.toFixed(2),
-        (item.qty * item.rate).toFixed(2)
-      ];
-    });
+    const tableData = this.items.map((item: any, index: number) => [
+      (index + 1).toString(), item.item || '-', item.hsn || '-',
+      item.specifications || (item.hsn ? `HSN: ${item.hsn}` : '-'),
+      item.qty.toString(), item.uom || 'Kg', item.rate.toFixed(2), (item.qty * item.rate).toFixed(2)
+    ]);
 
     autoTable(doc, {
       startY: yPosition,
-      head: [[
-        'Sr. No.',
-        'Material Description',
-        'HSN CODE',
-        'Specifications',
-        'Quantity',
-        'Uom',
-        'Rate/Uom',
-        'Amount (Rs.)'
-      ]],
+      head: [['Sr. No.', 'Material Description', 'HSN CODE', 'Specifications', 'Quantity', 'Uom', 'Rate/Uom', 'Amount (Rs.)']],
       body: tableData,
       theme: 'grid',
-      headStyles: {
-        fillColor: [255, 255, 255],
-        textColor: [0, 0, 0],
-        fontStyle: 'bold',
-        halign: 'center',
-        lineWidth: 0.5,
-        lineColor: [0, 0, 0]
-      },
-      columnStyles: {
-        0: { cellWidth: 15, halign: 'center' },
-        1: { cellWidth: 40, halign: 'center' },
-        2: { cellWidth: 20, halign: 'center' },
-        3: { cellWidth: 35 },
-        4: { cellWidth: 20, halign: 'center' },
-        5: { cellWidth: 15, halign: 'center' },
-        6: { cellWidth: 20, halign: 'center' },
-        7: { cellWidth: 25, halign: 'left' }
-      },
-      styles: {
-        fontSize: 10,
-        cellPadding: 3,
-        lineWidth: 0.5,
-        lineColor: [0, 0, 0]
-      },
-      bodyStyles: {
-        textColor: [0, 0, 0]
-      }
+      headStyles: { fillColor: [255, 255, 255], textColor: [0, 0, 0], fontStyle: 'bold', halign: 'center', lineWidth: 0.5, lineColor: [0, 0, 0] },
+      columnStyles: { 0: { cellWidth: 15, halign: 'center' }, 1: { cellWidth: 40, halign: 'center' }, 2: { cellWidth: 20, halign: 'center' }, 3: { cellWidth: 35 }, 4: { cellWidth: 20, halign: 'center' }, 5: { cellWidth: 15, halign: 'center' }, 6: { cellWidth: 20, halign: 'center' }, 7: { cellWidth: 25, halign: 'left' } },
+      styles: { fontSize: 10, cellPadding: 3, lineWidth: 0.5, lineColor: [0, 0, 0] },
+      bodyStyles: { textColor: [0, 0, 0] }
     });
 
     yPosition = (doc as any).lastAutoTable.finalY + 5;
-
-    // Financial Summary
     const summaryStartX = 120;
     doc.setFontSize(11);
-
-    // Assessable Value
     doc.setFont('helvetica', 'bold');
     doc.text('Assessable Value :', summaryStartX, yPosition, { align: 'right' });
-    doc.text(this.getSubtotal().toFixed(2), summaryStartX + 50, yPosition);
-    yPosition += 6;
-
-    // Packing & Forwarding
+    doc.text(this.getSubtotal().toFixed(2), summaryStartX + 50, yPosition); yPosition += 6;
     doc.setFont('helvetica', 'normal');
     doc.text('Packing & Forwarding', summaryStartX, yPosition, { align: 'right' });
     doc.setFont('helvetica', 'bold');
-    doc.text(this.freightCharges ? this.freightCharges.toFixed(2) : '0',
-      summaryStartX + 50, yPosition);
-    yPosition += 6;
-
-    // Sub Total
+    doc.text(this.freightCharges ? this.freightCharges.toFixed(2) : '0', summaryStartX + 50, yPosition); yPosition += 6;
     doc.setFont('helvetica', 'normal');
     doc.text('Sub Total:', summaryStartX, yPosition, { align: 'right' });
     doc.setFont('helvetica', 'bold');
     const subTotal = this.getSubtotal() + (this.freightCharges || 0);
-    doc.text(subTotal.toFixed(2), summaryStartX + 50, yPosition);
-    yPosition += 6;
-
-    // IGST
+    doc.text(subTotal.toFixed(2), summaryStartX + 50, yPosition); yPosition += 6;
     doc.setFont('helvetica', 'normal');
     const taxRate = this.items.length > 0 && this.items[0].gst ? this.items[0].gst : 18;
     doc.text(`IGST @ ${taxRate}%`, summaryStartX, yPosition, { align: 'right' });
     doc.text('N.A.', summaryStartX + 25, yPosition, { align: 'center' });
     const igstAmount = this.getTaxTotal();
-    doc.text(igstAmount.toFixed(3), summaryStartX + 50, yPosition);
-    yPosition += 6;
-
-    // Round off
+    doc.text(igstAmount.toFixed(3), summaryStartX + 50, yPosition); yPosition += 6;
     doc.setFont('helvetica', 'bold');
     doc.text('Round off', summaryStartX, yPosition, { align: 'right' });
     const grandTotalBeforeRound = subTotal + igstAmount;
     const roundedTotal = Math.round(grandTotalBeforeRound);
     const roundOff = roundedTotal - grandTotalBeforeRound;
-    doc.text(roundOff.toFixed(2), summaryStartX + 50, yPosition);
-    yPosition += 6;
-
-    // Grand Total
+    doc.text(roundOff.toFixed(2), summaryStartX + 50, yPosition); yPosition += 6;
     doc.text('Grand Total :', summaryStartX, yPosition, { align: 'right' });
-    doc.text(roundedTotal.toFixed(3), summaryStartX + 50, yPosition);
-    yPosition += 8;
-
-    // Amount in Words
+    doc.text(roundedTotal.toFixed(3), summaryStartX + 50, yPosition); yPosition += 8;
     doc.setFont('helvetica', 'bold');
-    const amountInWords = this.convertNumberToWords(roundedTotal);
-    doc.text(`In Words - Rs. ${amountInWords}`, 15, yPosition);
-    yPosition += 10;
-
-    // Reference note
-    doc.text('# Subject to the Terms stated in enclosed Commercial Terms & Conditions Annexure.',
-      15, yPosition);
-    yPosition += 10;
-
-    // Signature blocks
-    doc.setFontSize(12);
-    doc.setFont('helvetica', 'normal');
+    doc.text(`In Words - Rs. ${this.convertNumberToWords(roundedTotal)}`, 15, yPosition); yPosition += 10;
+    doc.text('# Subject to the Terms stated in enclosed Commercial Terms & Conditions Annexure.', 15, yPosition); yPosition += 10;
+    doc.setFontSize(12); doc.setFont('helvetica', 'normal');
     doc.text('For, Navbharat Insulation & Engg. Co.', 15, yPosition);
-    doc.setFontSize(11);
-    doc.text('Signed', pageWidth - 15, yPosition, { align: 'right' });
-
+    doc.setFontSize(11); doc.text('Signed', pageWidth - 15, yPosition, { align: 'right' });
     yPosition += 4;
     if (stampBase64) { doc.addImage(stampBase64, 'JPEG', 15, yPosition, 30, 22); }
     yPosition += 30;
-
-    doc.setFontSize(11);
-    doc.text('Authorised Signatory', 15, yPosition);
+    doc.setFontSize(11); doc.text('Authorised Signatory', 15, yPosition);
     doc.text(`For ${this.vendorName || 'Vendor'}`, pageWidth - 15, yPosition, { align: 'right' });
-
-    yPosition += 5;
-    doc.text('Accepted as above', pageWidth - 15, yPosition, { align: 'right' });
+    yPosition += 5; doc.text('Accepted as above', pageWidth - 15, yPosition, { align: 'right' });
   }
 
-  // Helper function to convert number to words
   private convertNumberToWords(amount: number): string {
     const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine'];
-    const teens = ['Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen',
-      'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+    const teens = ['Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
     const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
-
     if (amount === 0) return 'Zero';
-
     const num = Math.floor(amount);
-
-    function convertLessThanThousand(n: number): string {
+    function clt(n: number): string {
       if (n === 0) return '';
       if (n < 10) return ones[n];
       if (n < 20) return teens[n - 10];
       if (n < 100) return tens[Math.floor(n / 10)] + (n % 10 !== 0 ? ' ' + ones[n % 10] : '');
-      return ones[Math.floor(n / 100)] + ' Hundred' + (n % 100 !== 0 ? ' ' + convertLessThanThousand(n % 100) : '');
+      return ones[Math.floor(n / 100)] + ' Hundred' + (n % 100 !== 0 ? ' ' + clt(n % 100) : '');
     }
-
-    if (num < 1000) return convertLessThanThousand(num) + ' Only';
-    if (num < 100000) {
-      const thousands = Math.floor(num / 1000);
-      const remainder = num % 1000;
-      return convertLessThanThousand(thousands) + ' Thousand' +
-        (remainder !== 0 ? ' ' + convertLessThanThousand(remainder) : '') + ' Only';
-    }
-    if (num < 10000000) {
-      const lakhs = Math.floor(num / 100000);
-      const remainder = num % 100000;
-      return convertLessThanThousand(lakhs) + ' Lac' +
-        (remainder >= 1000 ? ' ' + this.convertNumberToWords(remainder).replace(' Only', '') : '') + ' Only';
-    }
-
-    const crores = Math.floor(num / 10000000);
-    const remainder = num % 10000000;
-    return convertLessThanThousand(crores) + ' Crore' +
-      (remainder >= 100000 ? ' ' + this.convertNumberToWords(remainder).replace(' Only', '') : '') + ' Only';
+    if (num < 1000) return clt(num) + ' Only';
+    if (num < 100000) { const t = Math.floor(num / 1000); const r = num % 1000; return clt(t) + ' Thousand' + (r !== 0 ? ' ' + clt(r) : '') + ' Only'; }
+    if (num < 10000000) { const l = Math.floor(num / 100000); const r = num % 100000; return clt(l) + ' Lac' + (r >= 1000 ? ' ' + this.convertNumberToWords(r).replace(' Only', '') : '') + ' Only'; }
+    const c = Math.floor(num / 10000000); const r = num % 10000000;
+    return clt(c) + ' Crore' + (r >= 100000 ? ' ' + this.convertNumberToWords(r).replace(' Only', '') : '') + ' Only';
   }
 }

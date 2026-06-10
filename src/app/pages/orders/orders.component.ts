@@ -1,7 +1,7 @@
 import { Component, OnInit, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { DBService } from '../../service/db.service';
+import { ApiService } from '../../service/api.service';
 
 type OrderStatus = 'offers' | 'ongoing' | 'completed';
 
@@ -16,7 +16,7 @@ interface OrderItem {
 }
 
 interface Order {
-  id?: number;
+  id?: string;
   orderNo: string;
   inquiryNo?: string;
   orderDate: string;
@@ -47,7 +47,7 @@ export class OrdersComponent implements OnInit {
   // Modals
   showModal = false;
   isEditing = false;
-  editingOrderId: number | null = null;
+  editingOrderId: string | null = null;
   orderForm: Order = this.getEmptyOrder();
 
   showDetailsModal = false;
@@ -55,9 +55,9 @@ export class OrdersComponent implements OnInit {
 
   // Data Lists
   inquiriesList: any[] = [];
-  inventoryList: any[] = []; // ✅ New Inventory List
+  inventoryList: any[] = [];
 
-  constructor(private dbService: DBService) { }
+  constructor(private apiService: ApiService) { }
 
   // Action Menu Helpers
   activeMenuId: any = null;
@@ -76,10 +76,66 @@ export class OrdersComponent implements OnInit {
     this.activeMenuId = null;
   }
 
-  ngOnInit() {
-    this.loadOrders();
-    this.loadInquiriesFromDB();
-    this.loadInventoryFromDB(); // ✅ Load inventory on init
+  // ── Mapping helpers ──────────────────────────────────────
+
+  private toDbRow(order: Order): any {
+    const row: any = {
+      order_ref:    order.orderNo       || null,
+      order_date:   order.orderDate     || null,
+      delivery_date: order.deliveryDate || null,
+      customer_name: order.customerName || null,
+      inquiry_ref:  order.inquiryNo     || null,
+      salesman:     order.salesman      || null,
+      items:        order.items         ?? [],
+      amount:       order.amount        ?? 0,
+      gst_percent:  order.gstPercent    ?? 18,
+      grand_total:  order.totalAmount   ?? 0,
+      status:       order.status        || 'offers',
+      remarks:      order.remarks       || null,
+    };
+    if (order.id) row.id = order.id;
+    return row;
+  }
+
+  private fromDbRow(row: any): Order {
+    return {
+      id:           row.id,
+      orderNo:      row.order_ref    || '',
+      orderDate:    row.order_date   || '',
+      deliveryDate: row.delivery_date || '',
+      customerName: row.customer_name || '',
+      inquiryNo:    row.inquiry_ref  || '',
+      salesman:     row.salesman     || '',
+      items:        Array.isArray(row.items) ? row.items : [],
+      amount:       row.amount       ?? 0,
+      gstPercent:   row.gst_percent  ?? 18,
+      totalAmount:  row.grand_total  ?? 0,
+      status:       (row.status as OrderStatus) || 'offers',
+      remarks:      row.remarks      || '',
+    };
+  }
+
+  private mapInquiry(row: any): any {
+    const refMatch = (row.inquiry_ref || '').match(/INQ-(\d+)/i);
+    const seqId = refMatch ? parseInt(refMatch[1], 10) : null;
+    return {
+      id:          seqId ?? row.id,
+      _uuid:       row.id,
+      companyName: row.company_name  || '',
+      inquiryNo:   row.inquiry_ref   || '',
+      salesman:    row.salesman      || '',
+      items:       Array.isArray(row.items) ? row.items : [],
+    };
+  }
+
+  // ── Lifecycle ──────────────────────────────────────────
+
+  async ngOnInit() {
+    await Promise.all([
+      this.loadOrders(),
+      this.loadInquiriesFromDB(),
+      this.loadInventoryFromDB(),
+    ]);
   }
 
   /* -------- FILTERED ORDERS -------- */
@@ -87,84 +143,69 @@ export class OrdersComponent implements OnInit {
     return this.orders.filter(o => o.status === this.selectedFilter);
   }
 
-  applyFilter() {
-    // Trigger logic on filter change if needed
-  }
+  applyFilter() { }
 
   /* -------- LOAD DATA -------- */
-  private loadInquiriesFromDB() {
-    this.dbService.getAll('inquiries').then(data => {
-      this.inquiriesList = data || [];
-      console.log("📄 Inquiries loaded:", this.inquiriesList.length);
-    });
+  private async loadInquiriesFromDB() {
+    try {
+      const rows = await this.apiService.getAll('inquiries');
+      this.inquiriesList = rows.map((r: any) => this.mapInquiry(r));
+    } catch {
+      this.inquiriesList = [];
+    }
   }
 
-  private loadInventoryFromDB() {
-    this.dbService.getAll('inventory').then(data => {
-      this.inventoryList = data || [];
-      console.log("📦 Inventory loaded for pricing:", this.inventoryList.length);
-    });
+  private async loadInventoryFromDB() {
+    try {
+      this.inventoryList = await this.apiService.getAll('inventory');
+    } catch {
+      this.inventoryList = [];
+    }
   }
 
-  /* -------- INQUIRY → ORDER LINKING (WITH RATE LOOKUP) -------- */
+  /* -------- INQUIRY → ORDER LINKING -------- */
   onInquirySelect(event: any) {
     const val = event.target.value;
     if (!val) return;
 
-    // Use loose equality (==) to handle string/number ID mismatch
-    const selectedInquiry = this.inquiriesList.find(i => i.id == val);
+    const selectedInquiry = this.inquiriesList.find(i => String(i.id) == String(val));
+    if (!selectedInquiry) return;
 
-    if (!selectedInquiry) {
-      console.warn("❌ Inquiry not found for ID:", val);
-      return;
-    }
-
-    console.log("✅ Selected Inquiry:", selectedInquiry);
-
-    // 1. Auto-fill Header
-    this.orderForm.inquiryNo = selectedInquiry.no || selectedInquiry.inquiryNo || String(selectedInquiry.id);
+    this.orderForm.inquiryNo = selectedInquiry.inquiryNo || String(selectedInquiry.id);
     this.orderForm.customerName = selectedInquiry.companyName || '';
     this.orderForm.salesman = selectedInquiry.salesman || '';
 
-    // 2. Auto-fill Items & Lookup Rates
     if (selectedInquiry.items && Array.isArray(selectedInquiry.items)) {
       this.orderForm.items = selectedInquiry.items.map((it: any) => {
-
-        // Normalize Product Name
         const pName = it.productName || it.name || it.item || '';
-
-        // 🔍 Find product in inventory to get the Rate/Price
         const product = this.inventoryList.find((p: any) => {
           const invName = (p.displayName || p.name || '').toLowerCase().trim();
           const targetName = pName.toLowerCase().trim();
           return invName === targetName;
         });
-
-        // Use inventory price if available, otherwise 0
-        // Checks for 'price', 'rate', or 'sellingPrice' fields
         const unitRate = product ? (Number(product.price) || Number(product.rate) || Number(product.sellingPrice) || 0) : 0;
-
         return {
           productName: pName,
           hsn: it.hsn,
           uom: it.uom,
           qty: Number(it.qty) || Number(it.quantity) || 1,
-          rate: unitRate,  // ✅ Auto-filled from inventory
-          amount: 0        // Will be calculated below
+          rate: unitRate,
+          amount: 0
         };
       });
     }
 
-    // 3. Recalculate totals immediately
     this.recalculateFormAmounts();
   }
 
-  private async markInquiryConverted(inquiryId: number) {
-    const inquiry = await this.dbService.getById('inquiries', inquiryId);
-    if (!inquiry) return;
-    inquiry.status = 'converted';
-    await this.dbService.put('inquiries', inquiry);
-    console.log("Inquiry marked as CONVERTED:", inquiryId);
+  private async markInquiryConverted(inquiryRef: string) {
+    const inq = this.inquiriesList.find(i =>
+      i.inquiryNo === inquiryRef || String(i.id) === inquiryRef
+    );
+    if (!inq?._uuid) return;
+    try {
+      await this.apiService.put('inquiries', { id: inq._uuid, status: 'converted' });
+    } catch { /* non-critical */ }
   }
 
   /* -------- OPEN / CLOSE MODAL -------- */
@@ -179,7 +220,6 @@ export class OrdersComponent implements OnInit {
   openEditModal(order: Order) {
     this.isEditing = true;
     this.editingOrderId = order.id ?? null;
-    // Deep clone to prevent mutating the table row directly
     this.orderForm = JSON.parse(JSON.stringify(order));
     this.showModal = true;
   }
@@ -205,41 +245,32 @@ export class OrdersComponent implements OnInit {
     this.recalculateFormAmounts();
   }
 
-  /* -------- AMOUNT CALCULATION (STRICT TYPES) -------- */
+  /* -------- AMOUNT CALCULATION -------- */
   recalculateFormAmounts() {
     let amount = 0;
     this.orderForm.items.forEach(it => {
       const qty = Number(it.qty) || 0;
       const rate = Number(it.rate) || 0;
-
       it.amount = qty * rate;
       amount += it.amount;
     });
-
     this.orderForm.amount = Number(amount.toFixed(2));
-
     const gstPercent = Number(this.orderForm.gstPercent) || 0;
     const gst = (this.orderForm.amount * gstPercent) / 100;
-
     this.orderForm.totalAmount = Number((this.orderForm.amount + gst).toFixed(2));
   }
 
-  /* -------- SUBMIT FORM (CREATE/UPDATE) -------- */
-  submitForm() {
-    // 1. Validation
+  /* -------- SUBMIT FORM -------- */
+  async submitForm() {
     if (!this.orderForm.customerName || this.orderForm.items.length === 0) {
       alert('Please enter customer and at least one item.');
       return;
     }
 
-    // 2. Prepare Data (Deep Clone & Type Conversion)
     const payload: Order = JSON.parse(JSON.stringify(this.orderForm));
-
-    // Force numbers for financial fields
     payload.amount = Number(payload.amount) || 0;
     payload.gstPercent = Number(payload.gstPercent) || 0;
 
-    // Recalculate totals strictly before saving
     let calcAmount = 0;
     payload.items.forEach(item => {
       item.qty = Number(item.qty) || 0;
@@ -247,85 +278,63 @@ export class OrdersComponent implements OnInit {
       item.amount = item.qty * item.rate;
       calcAmount += item.amount;
     });
-
     payload.amount = parseFloat(calcAmount.toFixed(2));
     const gstAmount = (payload.amount * payload.gstPercent) / 100;
     payload.totalAmount = parseFloat((payload.amount + gstAmount).toFixed(2));
 
-    /* ---------- UPDATE ---------- */
-    if (this.isEditing && this.editingOrderId != null) {
-      payload.id = this.editingOrderId; // Ensure ID is attached for update
-
-      this.updateOrderInDB(payload).then(() => {
-        console.log('✅ Order updated');
-        this.showModal = false;
-        this.loadOrders();
-      }).catch(err => {
-        console.error('❌ Update failed', err);
-        alert('Failed to update order');
-      });
-
-      return;
-    }
-
-    /* ---------- CREATE ---------- */
-    // Ensure ID is undefined so IndexedDB auto-increments
-    delete payload.id;
-
-    this.createOrderInDB(payload).then(() => {
-      console.log('✅ Order created');
-
-      // Handle side effects
-      this.createShippingReminder(payload);
-
-      if (payload.inquiryNo) {
-        this.markInquiryConverted(Number(payload.inquiryNo));
+    try {
+      if (this.isEditing && this.editingOrderId != null) {
+        payload.id = this.editingOrderId;
+        await this.apiService.put('orders', this.toDbRow(payload));
+      } else {
+        delete payload.id;
+        await this.apiService.add('orders', this.toDbRow(payload));
+        await this.addReminder({
+          type: 'order',
+          name: payload.customerName || '',
+          referenceNo: payload.orderNo || '',
+          date: payload.deliveryDate || null,
+          daysFromNow: 7,
+          note: `Shipping follow up for order ${payload.orderNo}`,
+        });
+        if (payload.inquiryNo) {
+          await this.markInquiryConverted(payload.inquiryNo);
+        }
       }
-
       this.showModal = false;
-      this.loadOrders();
-    }).catch(err => {
-      console.error('❌ Create failed', err);
+      await this.loadOrders();
+    } catch (err) {
+      console.error('❌ Failed to save order:', err);
       alert('Failed to save order');
-    });
+    }
   }
 
   /* -------- UPDATE STATUS -------- */
-  updateStatus(orderId: number | undefined, newStatus: OrderStatus) {
+  async updateStatus(orderId: string | undefined, newStatus: OrderStatus) {
     if (orderId == null) return;
     const order = this.orders.find(o => o.id === orderId);
     if (!order) return;
 
     order.status = newStatus;
-
-    this.updateOrderInDB(order).then(() => {
-      if (newStatus === 'completed') this.reduceInventoryForOrder(order);
-      this.loadOrders();
-    });
+    try {
+      await this.apiService.put('orders', this.toDbRow(order));
+      if (newStatus === 'completed') await this.reduceInventoryForOrder(order);
+      await this.loadOrders();
+    } catch (err) {
+      console.error('❌ Failed to update status:', err);
+    }
   }
 
   /* -------- DELETE ORDER -------- */
-  deleteOrder(orderId: number | undefined) {
+  async deleteOrder(orderId: string | undefined) {
     if (!confirm('Delete this order?')) return;
     if (orderId == null) return;
-
-    this.deleteOrderFromDB(orderId).then(() => this.loadOrders());
-  }
-
-  /* -------- CRUD METHODS (FIXED) -------- */
-
-  private async createOrderInDB(order: Order): Promise<void> {
-    const { id, ...orderWithoutId } = order;
-    await this.dbService.add('orders', orderWithoutId);
-  }
-
-  private async updateOrderInDB(order: Order): Promise<void> {
-    if (!order.id) throw new Error('Cannot update order without ID');
-    await this.dbService.put('orders', order);
-  }
-
-  private async deleteOrderFromDB(orderId: number): Promise<void> {
-    await this.dbService.delete('orders', orderId);
+    try {
+      await this.apiService.delete('orders', orderId);
+      await this.loadOrders();
+    } catch (err) {
+      console.error('❌ Failed to delete order:', err);
+    }
   }
 
   /* -------- HELPERS -------- */
@@ -337,10 +346,14 @@ export class OrdersComponent implements OnInit {
 
   private async reduceInventoryForOrder(order: Order): Promise<void> {
     for (const it of order.items) {
-      const item = await this.dbService.getById('inventory', it.productName);
+      const item = this.inventoryList.find((p: any) =>
+        (p.displayName || p.name || '') === it.productName
+      );
       if (!item) continue;
-      item.quantity = Math.max(0, Number(item.quantity) - Number(it.qty));
-      await this.dbService.put('inventory', item);
+      const newQty = Math.max(0, Number(item.quantity) - Number(it.qty));
+      try {
+        await this.apiService.put('inventory', { id: item.id, quantity: newQty });
+      } catch { /* non-critical */ }
     }
   }
 
@@ -363,35 +376,39 @@ export class OrdersComponent implements OnInit {
     };
   }
 
-  loadOrders() {
-    this.dbService.getAll('orders').then(data => {
-      console.log('📦 Orders loaded:', data);
-      this.orders = data;
-      // Re-apply filter immediately after loading
+  async loadOrders() {
+    try {
+      const rows = await this.apiService.getAll('orders');
+      this.orders = rows.map((r: any) => this.fromDbRow(r));
       this.applyFilter();
-    });
+    } catch (err) {
+      console.error('❌ Failed to load orders:', err);
+      this.orders = [];
+    }
   }
 
-  async createShippingReminder(order: Order) {
-    console.log('═══════════════════════════════════════');
-    console.log('✅ NEW ORDER CREATED');
-    console.log('═══════════════════════════════════════');
-    console.log('📦 Order No:', order.orderNo);
-
+  private async addReminder(opts: {
+    type: string; name: string; referenceNo: string;
+    date: string | null; daysFromNow: number; note: string;
+  }): Promise<void> {
     try {
-      await this.dbService.createAutoReminder({
-        type: 'order',
-        name: order.customerName,
-        mobile: '',
-        referenceNo: order.orderNo,
-        followUpDays: 2, // Ship in 2 days
-        note: `Ship order ${order.orderNo} - ${order.customerName}`
+      let reminderDate = opts.date;
+      if (!reminderDate) {
+        const d = new Date();
+        d.setDate(d.getDate() + opts.daysFromNow);
+        reminderDate = d.toISOString().slice(0, 10);
+      }
+      await this.apiService.add('reminders', {
+        date:         reminderDate,
+        time:         '10:00',
+        type:         opts.type,
+        name:         opts.name,
+        mobile:       '',
+        reference_no: opts.referenceNo,
+        note:         opts.note,
+        source:       'system',
+        status:       'pending',
       });
-
-      console.log('✅ Shipping reminder created');
-
-    } catch (error) {
-      console.error('❌ Shipping reminder creation failed:', error);
-    }
+    } catch { /* reminder creation is non-critical */ }
   }
 }

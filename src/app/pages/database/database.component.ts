@@ -2,7 +2,7 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
-import { DBService } from '../../service/db.service';
+import { ApiService } from '../../service/api.service';
 
 @Component({
   selector: 'app-database',
@@ -24,17 +24,46 @@ export class DatabaseComponent implements OnInit {
 
   categories = ['Datasheet', 'MSDS', 'Test Certificate', 'Drawing', 'Brochure', 'Other'];
 
-  // Upload modal
   showUploadModal = false;
   uploadForm: any = { name: '', category: '', material: '', tags: '' };
   pendingFile: File | null = null;
 
-  // Preview modal
   showPreviewModal = false;
   previewDoc: any = null;
   previewSafeUrl: SafeResourceUrl | null = null;
 
-  constructor(private db: DBService, private sanitizer: DomSanitizer) {}
+  constructor(private apiService: ApiService, private sanitizer: DomSanitizer) { }
+
+  // ── Mapping helpers ──────────────────────────────────────
+
+  private toDbRow(doc: any): any {
+    return {
+      name:        doc.name        || '',
+      category:    doc.category    || 'Other',
+      material:    doc.material    || null,
+      tags:        doc.tags        || null,
+      file_name:   doc.fileName    || null,
+      file_type:   doc.fileType    || null,
+      file_size:   doc.fileSize    ?? null,
+      file_data:   doc.fileData    || null,
+      uploaded_at: doc.uploadedAt  || new Date().toISOString(),
+    };
+  }
+
+  private fromDbRow(row: any): any {
+    return {
+      id:         row.id,
+      name:       row.name        || '',
+      category:   row.category    || '',
+      material:   row.material    || '',
+      tags:       row.tags        || '',
+      fileName:   row.file_name   || '',
+      fileType:   row.file_type   || '',
+      fileSize:   row.file_size   ?? 0,
+      fileData:   row.file_data   || '',
+      uploadedAt: row.uploaded_at || '',
+    };
+  }
 
   async ngOnInit() {
     await this.loadDocuments();
@@ -42,10 +71,10 @@ export class DatabaseComponent implements OnInit {
 
   async loadDocuments() {
     try {
-      this.documents = await this.db.getAll('documents');
-      this.documents.sort((a, b) =>
-        new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime()
-      );
+      const rows = await this.apiService.getAll('documents');
+      this.documents = rows
+        .map((r: any) => this.fromDbRow(r))
+        .sort((a: any, b: any) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
     } catch {
       this.documents = [];
     }
@@ -69,7 +98,7 @@ export class DatabaseComponent implements OnInit {
     this.filteredDocuments = result;
   }
 
-  // ── Upload ──────────────────────────────────────────────────────────────
+  // ── Upload ───────────────────────────────────────────────
 
   triggerFileInput() {
     const input = document.getElementById('fileInput') as HTMLInputElement;
@@ -100,17 +129,17 @@ export class DatabaseComponent implements OnInit {
     try {
       const base64 = await this.fileToBase64(this.pendingFile);
       const doc = {
-        name: this.uploadForm.name.trim(),
-        category: this.uploadForm.category || 'Other',
-        material: this.uploadForm.material.trim(),
-        tags: this.uploadForm.tags.trim(),
-        fileName: this.pendingFile.name,
-        fileType: this.pendingFile.type,
-        fileSize: this.pendingFile.size,
-        fileData: base64,
+        name:       this.uploadForm.name.trim(),
+        category:   this.uploadForm.category || 'Other',
+        material:   this.uploadForm.material.trim(),
+        tags:       this.uploadForm.tags.trim(),
+        fileName:   this.pendingFile.name,
+        fileType:   this.pendingFile.type,
+        fileSize:   this.pendingFile.size,
+        fileData:   base64,
         uploadedAt: new Date().toISOString()
       };
-      await this.db.add('documents', doc);
+      await this.apiService.add('documents', this.toDbRow(doc));
       this.uploadStatus = '✓ Document uploaded successfully.';
       this.cancelUpload();
       await this.loadDocuments();
@@ -130,7 +159,7 @@ export class DatabaseComponent implements OnInit {
     });
   }
 
-  // ── Actions ─────────────────────────────────────────────────────────────
+  // ── Actions ──────────────────────────────────────────────
 
   downloadDocument(doc: any) {
     const a = document.createElement('a');
@@ -151,13 +180,18 @@ export class DatabaseComponent implements OnInit {
     this.previewSafeUrl = null;
   }
 
-  async deleteDocument(id: number) {
+  async deleteDocument(id: string) {
     if (!confirm('Delete this document? This cannot be undone.')) return;
-    await this.db.delete('documents', id);
-    await this.loadDocuments();
+    try {
+      await this.apiService.delete('documents', id);
+      await this.loadDocuments();
+    } catch (error) {
+      console.error('❌ Failed to delete document:', error);
+      alert('❌ Failed to delete document');
+    }
   }
 
-  // ── Helpers ──────────────────────────────────────────────────────────────
+  // ── Helpers ──────────────────────────────────────────────
 
   formatFileSize(bytes: number): string {
     if (!bytes) return '—';
@@ -168,32 +202,16 @@ export class DatabaseComponent implements OnInit {
 
   formatDate(iso: string): string {
     if (!iso) return '—';
-    return new Date(iso).toLocaleDateString('en-IN', {
-      day: '2-digit', month: 'short', year: 'numeric'
-    });
+    return new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
   }
 
   getCategoryColor(cat: string): string {
-    const map: Record<string, string> = {
-      'Datasheet': '#3b82f6',
-      'MSDS': '#ef4444',
-      'Test Certificate': '#10b981',
-      'Drawing': '#8b5cf6',
-      'Brochure': '#f59e0b',
-      'Other': '#6b7280'
-    };
+    const map: Record<string, string> = { 'Datasheet': '#3b82f6', 'MSDS': '#ef4444', 'Test Certificate': '#10b981', 'Drawing': '#8b5cf6', 'Brochure': '#f59e0b', 'Other': '#6b7280' };
     return map[cat] || '#6b7280';
   }
 
   getCategoryBg(cat: string): string {
-    const map: Record<string, string> = {
-      'Datasheet': '#eff6ff',
-      'MSDS': '#fef2f2',
-      'Test Certificate': '#f0fdf4',
-      'Drawing': '#f5f3ff',
-      'Brochure': '#fffbeb',
-      'Other': '#f9fafb'
-    };
+    const map: Record<string, string> = { 'Datasheet': '#eff6ff', 'MSDS': '#fef2f2', 'Test Certificate': '#f0fdf4', 'Drawing': '#f5f3ff', 'Brochure': '#fffbeb', 'Other': '#f9fafb' };
     return map[cat] || '#f9fafb';
   }
 

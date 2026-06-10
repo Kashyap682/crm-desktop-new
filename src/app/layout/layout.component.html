@@ -129,7 +129,31 @@
         <span class="nav-text">Document Library</span>
       </a>
 
+      <!-- Admin-only: User Management -->
+      <a *ngIf="isAdmin" routerLink="/users" routerLinkActive="active" title="User Management">
+        <svg class="nav-icon" width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <circle cx="5" cy="5" r="2.5" stroke="currentColor" stroke-width="1.5"/>
+          <path d="M1 13c0-2.5 1.8-4 4-4s4 1.5 4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          <path d="M11 7v6M8 10h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+        <span class="nav-text">Users</span>
+      </a>
+
     </nav>
+
+    <!-- Sidebar footer: current user + logout -->
+    <div class="sidebar-footer">
+      <div class="sidebar-user">
+        <span class="sidebar-user-email">{{ authService.getUser()?.email }}</span>
+        <span class="sidebar-user-role">{{ authService.getUser()?.app_role }}</span>
+      </div>
+      <button class="btn-logout" (click)="authService.logout()" title="Logout">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <path d="M5 2H2a1 1 0 00-1 1v8a1 1 0 001 1h3M9 10l3-3-3-3M5 7h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+    </div>
+
   </aside>
 
   <!-- Top bar + content -->

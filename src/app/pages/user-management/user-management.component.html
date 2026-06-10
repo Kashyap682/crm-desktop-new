@@ -1,0 +1,124 @@
+<div class="um-page">
+
+  <div class="um-header">
+    <div>
+      <h1 class="um-title">User Management</h1>
+      <p class="um-subtitle">Manage team members and their access roles</p>
+    </div>
+    <button class="btn-primary" (click)="openAddModal()">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+        <path d="M7 1v12M1 7h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+      Add User
+    </button>
+  </div>
+
+  <!-- Alerts -->
+  <div class="alert alert-success" *ngIf="successMsg">{{ successMsg }}</div>
+  <div class="alert alert-error"   *ngIf="errorMsg">{{ errorMsg }}</div>
+
+  <!-- Loading -->
+  <div class="loading-row" *ngIf="isLoading">Loading users…</div>
+
+  <!-- User table -->
+  <div class="um-table-wrap" *ngIf="!isLoading">
+    <table class="um-table">
+      <thead>
+        <tr>
+          <th>Email</th>
+          <th>Role</th>
+          <th>Status</th>
+          <th>Created</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let user of users" [class.inactive-row]="!user.isActive">
+
+          <td class="email-cell">
+            {{ user.email }}
+            <span class="you-tag" *ngIf="user.id === currentUserId">you</span>
+          </td>
+
+          <td>
+            <select
+              class="role-select"
+              [ngModel]="user.appRole"
+              (ngModelChange)="changeRole(user, $event)"
+              [disabled]="user.id === currentUserId || roleUpdating === user.id">
+              <option value="admin">Admin</option>
+              <option value="sales">Sales</option>
+              <option value="viewer">Viewer</option>
+            </select>
+          </td>
+
+          <td>
+            <span class="status-badge" [class.status-active]="user.isActive" [class.status-inactive]="!user.isActive">
+              {{ user.isActive ? 'Active' : 'Inactive' }}
+            </span>
+          </td>
+
+          <td class="date-cell">{{ formatDate(user.createdAt) }}</td>
+
+          <td class="actions-cell">
+            <button
+              class="btn-icon"
+              [class.btn-deactivate]="user.isActive"
+              [class.btn-activate]="!user.isActive"
+              [disabled]="user.id === currentUserId"
+              (click)="toggleActive(user)"
+              [title]="user.isActive ? 'Deactivate user' : 'Activate user'">
+              {{ user.isActive ? 'Deactivate' : 'Activate' }}
+            </button>
+          </td>
+
+        </tr>
+
+        <tr *ngIf="users.length === 0">
+          <td colspan="5" class="empty-cell">No users found.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+</div>
+
+<!-- Add User Modal -->
+<div class="modal-backdrop" *ngIf="showAddModal" (click)="closeAddModal()">
+  <div class="modal-box" (click)="$event.stopPropagation()">
+    <div class="modal-header">
+      <h2>Add New User</h2>
+      <button class="modal-close" (click)="closeAddModal()">✕</button>
+    </div>
+
+    <div class="modal-body">
+      <div class="alert alert-error" *ngIf="addError">{{ addError }}</div>
+
+      <div class="form-group">
+        <label>Email address</label>
+        <input type="email" [(ngModel)]="addForm.email" placeholder="user@company.com" />
+      </div>
+
+      <div class="form-group">
+        <label>Password <span class="hint">(min. 8 characters)</span></label>
+        <input type="password" [(ngModel)]="addForm.password" placeholder="••••••••" />
+      </div>
+
+      <div class="form-group">
+        <label>Role</label>
+        <select [(ngModel)]="addForm.appRole">
+          <option value="admin">Admin — full access + user management</option>
+          <option value="sales">Sales — create & edit records</option>
+          <option value="viewer">Viewer — read only</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn-secondary" (click)="closeAddModal()">Cancel</button>
+      <button class="btn-primary" (click)="addUser()" [disabled]="addLoading">
+        {{ addLoading ? 'Creating…' : 'Create User' }}
+      </button>
+    </div>
+  </div>
+</div>

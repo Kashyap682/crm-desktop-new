@@ -2,7 +2,7 @@ import { Component, NgZone, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
-import { DBService } from '../../service/db.service';
+import { ApiService } from '../../service/api.service';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -50,7 +50,9 @@ interface FollowUpEntry {
 }
 
 interface InquiryRecord {
-  id?: number;
+  _uuid?: string;       // Postgres UUID — used for all DB operations
+  id?: number;          // Sequential number extracted from inquiry_ref — used for display
+  inquiryRef?: string;  // e.g. "INQ-001" — stored in inquiry_ref column
   date: string;
 
   companyName?: string;
@@ -181,6 +183,7 @@ export class InquiryMasterComponent {
       || this.countryDialCodes.find(c => c.code === (this.currentInquiry!.customerPhoneCode ?? '+91'))?.iso
       || 'in';
   }
+
   indianStates: string[] = [
     'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh',
     'Goa', 'Gujarat', 'Haryana', 'Himachal Pradesh', 'Jharkhand', 'Karnataka',
@@ -190,7 +193,7 @@ export class InquiryMasterComponent {
   ];
 
   constructor(
-    private dbService: DBService,
+    private apiService: ApiService,
     private router: Router,
     private ngZone: NgZone
   ) {
@@ -213,11 +216,81 @@ export class InquiryMasterComponent {
     this.activeMenuId = null;
   }
 
+  // ── snake_case ↔ camelCase mapping ──────────────────────────
+
+  /** Serialize camelCase InquiryRecord to snake_case PostgREST row */
+  private toDbRow(inq: any): any {
+    return {
+      ...(inq._uuid ? { id: inq._uuid } : {}),
+      date:                     inq.date                  || new Date().toISOString().slice(0, 10),
+      company_name:             inq.companyName           ?? null,
+      customer_name:            inq.customerName          ?? null,
+      customer_phone:           inq.customerPhone         ?? null,
+      customer_phone_code:      inq.customerPhoneCode     ?? null,
+      customer_phone_code_iso:  inq.customerPhoneCodeIso  ?? null,
+      email:                    inq.email                 ?? null,
+      mobile:                   inq.mobile                ?? null,
+      inquiry_type:             inq.inquiryType           ?? null,
+      inquiry_type_custom:      inq.inquiryTypeCustom     ?? null,
+      notes:                    inq.notes                 ?? null,
+      status:                   inq.status                ?? 'open',
+      decision:                 inq.decision              ?? null,
+      rejection_reason:         inq.rejectionReason       ?? null,
+      lost_reason:              inq.lost?.reason          ?? null,
+      lost_remarks:             inq.lost?.remarks         ?? null,
+      lost_date:                inq.lost?.date            ?? null,
+      office_address:           inq.officeAddress         ?? null,
+      billing:                  inq.billing               ?? null,
+      shipping:                 inq.shipping              ?? null,
+      items:                    inq.items                 ?? [],
+      follow_ups:               inq.followUps             ?? [],
+    };
+  }
+
+  /**
+   * Deserialize snake_case PostgREST row back to camelCase InquiryRecord.
+   * The sequential `id` is extracted from inquiry_ref (e.g. "INQ-003" → 3)
+   * so all existing display code / cross-references continue to work.
+   */
+  private fromDbRow(row: any): InquiryRecord {
+    const refMatch = (row.inquiry_ref || '').match(/INQ-(\d+)/i);
+    const seqId = refMatch ? parseInt(refMatch[1], 10) : undefined;
+    return {
+      _uuid:                row.id,
+      id:                   seqId,
+      inquiryRef:           row.inquiry_ref             || '',
+      date:                 row.date                    || '',
+      companyName:          row.company_name            || '',
+      customerName:         row.customer_name           || '',
+      customerPhone:        row.customer_phone          || '',
+      customerPhoneCode:    row.customer_phone_code     || '+91',
+      customerPhoneCodeIso: row.customer_phone_code_iso || 'in',
+      email:                row.email                   || '',
+      mobile:               row.mobile                  || '',
+      officeAddress:        row.office_address          || '',
+      billing:              row.billing                 || {},
+      shipping:             row.shipping                || {},
+      inquiryType:          row.inquiry_type            || '',
+      inquiryTypeCustom:    row.inquiry_type_custom     || '',
+      notes:                row.notes                   || '',
+      status:               row.status                  || 'open',
+      decision:             row.decision                || undefined,
+      rejectionReason:      row.rejection_reason        || '',
+      lost: (row.lost_reason || row.lost_remarks || row.lost_date) ? {
+        reason:  row.lost_reason  || '',
+        remarks: row.lost_remarks || '',
+        date:    row.lost_date    || '',
+      } : undefined,
+      items:    Array.isArray(row.items)      ? row.items      : [],
+      followUps:Array.isArray(row.follow_ups) ? row.follow_ups : [],
+    };
+  }
+
   /* -----------------------------
-     SALES ORDER NAVIGATION ✅
+     SALES ORDER NAVIGATION
   ----------------------------- */
   async openSalesOrder(inq: InquiryRecord) {
-    const allOffers = await this.dbService.getAll('offers');
+    const allOffers = await this.apiService.getAll('offers');
     const offer = allOffers.find((o: any) =>
       o.inquiryNo === inq.id && o.status !== 'superseded'
     ) || null;
@@ -225,12 +298,13 @@ export class InquiryMasterComponent {
   }
 
   async openpurchaseOrder(inq: InquiryRecord) {
-    const allOffers = await this.dbService.getAll('offers');
+    const allOffers = await this.apiService.getAll('offers');
     const offer = allOffers.find((o: any) =>
       o.inquiryNo === inq.id && o.status !== 'superseded'
     ) || null;
     this.router.navigate(['/purchase-order'], { state: { inquiry: inq, offer } });
   }
+
   goToRFQ(item?: any) {
     const inq = this.currentInquiry;
     // Look up vendor from inventory so RFQ can auto-fill vendor details
@@ -269,7 +343,21 @@ export class InquiryMasterComponent {
   ----------------------------- */
 
   async loadCustomers() {
-    this.customers = await this.dbService.getAll('customers');
+    const rows = await this.apiService.getAll('customers');
+    // Map snake_case PostgREST columns to camelCase shape expected by this component
+    this.customers = rows.map((r: any) => ({
+      id:               r.id,
+      companyName:      r.company_name    || '',
+      name:             r.name            || '',
+      email:            r.email           || '',
+      mobile:           r.mobile          || '',
+      primaryContact:   r.primary_contact   || {},
+      secondaryContact: r.secondary_contact || {},
+      officeAddress:    r.office_address    || {},
+      billing:          r.billing           || {},
+      shipping:         r.shipping          || {},
+      customerPhoneCode: r.primary_contact?.mobileCode || '+91',
+    }));
   }
 
   /* -----------------------------
@@ -373,39 +461,12 @@ export class InquiryMasterComponent {
    LOAD INVENTORY
 ----------------------------- */
   async loadInventory() {
-    this.inventory = await this.dbService.getAll('inventory');
+    this.inventory = await this.apiService.getAll('inventory');
   }
 
   /* -----------------------------
     PRODUCT SELECTION
   ----------------------------- */
-
-  // onProductSelect(item: any) {
-  //   if (!item.productName) return;
-
-  //   // 🔍 Find inventory by NAME KEY (dropdown value)
-  //   const product = this.inventory.find(
-  //     p => p.name === item.productName
-  //   );
-
-  //   if (!product) return;
-
-  //   // ✅ SAVE DISPLAY NAME (what user sees)
-  //   item.productName = product.displayName;
-
-  //   // ✅ Autofill rest (unchanged)
-  //   item.make = product.productMake || '';
-  //   item.uom = product.unit || 'Nos';
-
-  //   if (product.size) {
-  //     const parts = product.size.split(',');
-  //     item.density = parts[0]?.trim() || '';
-  //     item.thickness = parts[1]?.trim() || '';
-  //   }
-
-  //   item.form = product.category || '';
-  //   item.fsk = product.specifications || '';
-  // }
 
   private emptyItem(): InquiryItem {
     return {
@@ -551,19 +612,23 @@ export class InquiryMasterComponent {
     } catch (_) { /* ignore lookup errors */ }
   }
 
+  /**
+   * Compute the next sequential inquiry number by scanning existing inquiry_refs.
+   */
   private async getNextInquiryId(): Promise<number> {
-    const all = await this.dbService.getAll('inquiries');
+    const all = await this.apiService.getAll('inquiries');
     if (all.length === 0) return 1;
-    const maxId = Math.max(...all.map((r: any) => r.id || 0));
-    return maxId + 1;
+    const max = Math.max(0, ...all.map((r: any) => {
+      const m = (r.inquiry_ref || '').match(/INQ-(\d+)/i);
+      return m ? parseInt(m[1], 10) : 0;
+    }));
+    return max + 1;
   }
 
-
   async loadInquiries() {
-    this.customers = await this.dbService.getAll('customers');
-    const data = await this.dbService.getAll('inquiries') as InquiryRecord[];
-    this.inquiries = data;
-    this.filteredInquiries = data;
+    const rows = await this.apiService.getAll('inquiries');
+    this.inquiries = rows.map((r: any) => this.fromDbRow(r));
+    this.filteredInquiries = [...this.inquiries];
   }
 
   /* -----------------------------
@@ -574,7 +639,6 @@ export class InquiryMasterComponent {
     const term = this.searchTerm?.toLowerCase().trim();
 
     if (!term) {
-      // ✅ SAME OBJECTS, SAME IDs
       this.filteredInquiries = this.inquiries;
       return;
     }
@@ -592,7 +656,7 @@ export class InquiryMasterComponent {
   }
 
   trackByInquiryId(index: number, inq: InquiryRecord) {
-    return inq.id;
+    return inq._uuid || inq.id;
   }
 
 
@@ -646,61 +710,26 @@ export class InquiryMasterComponent {
     this.currentInquiry.items.splice(i, 1);
   }
 
-  // async saveInquiry() {
-  //   if (!this.currentInquiry) return;
-
-  //   const payload = { ...this.currentInquiry };
-  //   delete payload.id; // ✅ never poison again
-
-  //   await this.dbService.add('inquiries', payload);
-  //   await this.loadInquiries();
-
-  //   this.showAddEditModal = false;
-  //   this.currentInquiry = null;
-  // }
-
-  // async saveInquiry() {
-  //   if (!this.currentInquiry) return;
-
-  //   const db = await this.dbService.openDB();
-  //   const tx = db.transaction('inquiries', 'readwrite');
-  //   const store = tx.objectStore('inquiries');
-
-  //   if (this.isEditing) {
-  //     store.put(this.currentInquiry);   // update
-  //   } else {
-  //     store.add(this.currentInquiry);   // insert
-  //   }
-
-  //   tx.oncomplete = async () => {
-  //     await this.loadInquiries();
-  //     this.showAddEditModal = false;
-  //     this.currentInquiry = null;
-  //   };
-  // }
-
   async saveInquiry() {
     if (!this.currentInquiry) return;
 
     if (this.isEditing) {
-      await this.dbService.put('inquiries', this.currentInquiry);
-      console.log('✏️ Editing existing inquiry - no reminder created');
+      await this.apiService.put('inquiries', this.toDbRow(this.currentInquiry));
+      console.log('✏️ Inquiry updated');
     } else {
-      const savedId = await this.dbService.add('inquiries', this.currentInquiry);
-      console.log('✅ NEW INQUIRY SAVED, ID:', savedId, 'Display:', this.getDisplayInquiryId(savedId));
-      try {
-        await this.dbService.createAutoReminder({
-          type: 'inquiry',
-          name: this.currentInquiry.customerName,
-          mobile: this.currentInquiry.customerPhone,
-          referenceNo: this.getDisplayInquiryId(savedId),
-          followUpDays: 1,
-          note: `Follow-up inquiry ${this.getDisplayInquiryId(savedId)} - ${this.currentInquiry.customerName}`
-        });
-        console.log('✅ Reminder creation call completed');
-      } catch (error) {
-        console.error('❌ Reminder creation failed:', error);
-      }
+      // Use the preview ID (computed in openAddModal) as the human-readable ref
+      const row = { ...this.toDbRow(this.currentInquiry), inquiry_ref: this.previewInquiryId };
+      const newUuid = await this.apiService.add('inquiries', row);
+      this.currentInquiry._uuid = newUuid;
+      console.log('✅ NEW INQUIRY SAVED, ref:', this.previewInquiryId, 'uuid:', newUuid);
+
+      await this.addReminder({
+        type: 'inquiry',
+        name: this.currentInquiry.companyName || '',
+        referenceNo: this.previewInquiryId || '',
+        daysFromNow: 2,
+        note: `Follow up on inquiry ${this.previewInquiryId}`,
+      });
     }
 
     await this.loadInquiries();
@@ -726,35 +755,25 @@ export class InquiryMasterComponent {
   /* -----------------------------
      DELETE
   ----------------------------- */
-  // async deleteInquiry(id: number, event?: Event) {
-  //   console.log('🗑️ DELETE CLICKED, ID =', id);
-  //   event?.stopPropagation();
 
-  //   const db = await this.dbService.openDB();
-  //   const tx = db.transaction('inquiries', 'readwrite');
-  //   const store = tx.objectStore('inquiries');
-
-  //   const req = store.delete(id);
-
-  //   req.onsuccess = () => console.log('✅ Deleted ID:', id);
-  //   req.onerror = () => console.error('❌ Delete failed', req.error);
-
-  //   tx.oncomplete = async () => {
-  //     await this.loadInquiries();
-  //   };
-  // }
-
-  async deleteInquiry(id?: number, event?: Event) {
-    console.log('🗑️ DELETE CLICKED, ID =', id);
+  async deleteInquiry(seqId?: number, event?: Event) {
     event?.stopPropagation();
 
-    if (id === undefined) {
+    if (seqId === undefined) {
       console.error('❌ Cannot delete: ID is undefined');
       return;
     }
 
-    await this.dbService.delete('inquiries', id);
-    console.log('✅ Deleted ID:', id);
+    // Resolve the Postgres UUID from the loaded inquiries list
+    const inq = this.inquiries.find(i => i.id === seqId);
+    const uuid = inq?._uuid;
+    if (!uuid) {
+      console.error('❌ Cannot delete: UUID not found for id', seqId);
+      return;
+    }
+
+    await this.apiService.delete('inquiries', uuid);
+    console.log('✅ Deleted inquiry uuid:', uuid);
     await this.loadInquiries();
   }
 
@@ -778,7 +797,6 @@ export class InquiryMasterComponent {
   ----------------------------- */
 
   openFollowUpModal(inq: InquiryRecord) {
-    console.log('📌 openFollowUpModal called with:', inq);
     this.followUpTarget = inq;
     this.newFollowUpNote = '';
     this.showFollowUpModal = true;
@@ -799,7 +817,7 @@ export class InquiryMasterComponent {
     };
 
     this.followUpTarget.followUps.push(entry);
-    await this.dbService.put('inquiries', this.followUpTarget);
+    await this.apiService.put('inquiries', this.toDbRow(this.followUpTarget));
     this.closeFollowUpModal();
     await this.loadInquiries();
   }
@@ -807,15 +825,8 @@ export class InquiryMasterComponent {
   /* -----------------------------
      LOST INQUIRY
   ----------------------------- */
-  // openLostModal(inq: InquiryRecord) {
-  //   this.lostTarget = inq;
-  //   this.lostReasonText = '';
-  //   this.lostRemarksText = '';
-  //   this.showLostModal = true;
-  // }
 
   openLostModal(inq: InquiryRecord) {
-    console.log('📌 openLostModal called with:', inq);
     this.lostTarget = inq;
     this.showLostModal = true;
   }
@@ -834,7 +845,7 @@ export class InquiryMasterComponent {
       date: new Date().toLocaleDateString()
     };
 
-    await this.dbService.put('inquiries', this.lostTarget);
+    await this.apiService.put('inquiries', this.toDbRow(this.lostTarget));
     this.closeLostModal();
     await this.loadInquiries();
   }
@@ -934,6 +945,26 @@ export class InquiryMasterComponent {
     // ===== SAVE =====
     const fileName = `${this.getDisplayInquiryId(inq.id)}.pdf`;
     doc.save(fileName);
+  }
+
+  private async addReminder(opts: {
+    type: string; name: string; referenceNo: string; daysFromNow: number; note: string;
+  }): Promise<void> {
+    try {
+      const date = new Date();
+      date.setDate(date.getDate() + opts.daysFromNow);
+      await this.apiService.add('reminders', {
+        date:         date.toISOString().slice(0, 10),
+        time:         '10:00',
+        type:         opts.type,
+        name:         opts.name,
+        mobile:       '',
+        reference_no: opts.referenceNo,
+        note:         opts.note,
+        source:       'system',
+        status:       'pending',
+      });
+    } catch { /* reminder creation is non-critical */ }
   }
 
 }

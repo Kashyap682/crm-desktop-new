@@ -1,7 +1,7 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { DBService } from '../../service/db.service';
+import { ApiService } from '../../service/api.service';
 import { Router } from '@angular/router';
 
 
@@ -31,7 +31,7 @@ export class CreateOfferComponent implements OnInit {
   libraryCategories = ['Datasheet', 'MSDS', 'Test Certificate', 'Drawing', 'Brochure', 'Other'];
 
   isEditMode = false;
-  editingOfferId: number | null = null;
+  editingOfferId: string | null = null;
   originalOffer: any = null;
 
   businessVerticals = [
@@ -71,17 +71,136 @@ export class CreateOfferComponent implements OnInit {
     offerStatus: 'order_received'   // default for directly-added offers
   };
 
-  constructor(private db: DBService, private router: Router) { }
+  constructor(private apiService: ApiService, private router: Router) { }
 
   private normalizeText(value: any): string {
     return String(value || '').trim().toLowerCase();
   }
 
+  // ── Mapping helpers ──────────────────────────────────────
+
+  /** Map camelCase offer to PostgREST snake_case row. */
+  private toDbRow(offer: any): any {
+    const row: any = {
+      offer_ref:           offer.offerRef            ?? null,
+      inquiry_no:          offer.inquiryNo            ?? null,
+      customer_name:       offer.customerName         ?? null,
+      customer_snapshot:   offer.customerSnapshot     ?? null,
+      business_vertical:   offer.businessVertical     ?? null,
+      payment_terms:       offer.paymentTerms         ?? null,
+      validity:            offer.validity             ?? null,
+      terms:               offer.terms               ?? null,
+      freight_charges:     offer.freightCharges       ?? null,
+      subtotal:            offer.subtotal             ?? null,
+      gst:                 offer.gst                 ?? null,
+      cgst:                offer.cgst                ?? null,
+      sgst:                offer.sgst                ?? null,
+      igst:                offer.igst                ?? null,
+      gst_type:            offer.gstType             ?? null,
+      grand_total:         offer.grandTotal           ?? null,
+      offer_status:        offer.offerStatus          ?? null,
+      status:              offer.status              ?? 'active',
+      previous_version_id: offer.previousVersionId   ?? null,
+      original_item_rates: offer.originalItemRates   ?? null,
+      items:               offer.items               ?? [],
+      follow_ups:          offer.followUps            ?? null,
+      payment_details:     offer.paymentDetails       ?? null,
+      lost_details:        offer.lostDetails          ?? null,
+      regret_remarks:      offer.regretRemarks        ?? null,
+      sent_at:             offer.sentAt              ?? null,
+      attachments:         offer.attachments          ?? null,
+      po_copy_attachments: offer.poCopyAttachments   ?? null,
+      material:            offer.material            ?? null,
+      density:             offer.density             ?? null,
+      thickness:           offer.thickness           ?? null,
+      size:                offer.size                ?? null,
+      quantity:            offer.quantity            ?? null,
+      rate:                offer.rate                ?? null,
+      date:                offer.date                ?? new Date().toISOString().slice(0, 10),
+    };
+    if (offer.id) row.id = offer.id;
+    return row;
+  }
+
+  /** Map PostgREST snake_case row to camelCase offer. */
+  private fromDbRow(row: any): any {
+    return {
+      id:               row.id,
+      offerRef:         row.offer_ref             || '',
+      inquiryNo:        row.inquiry_no            ?? null,
+      customerName:     row.customer_name         || '',
+      customerSnapshot: row.customer_snapshot     || null,
+      businessVertical: row.business_vertical     || '',
+      paymentTerms:     row.payment_terms         || '',
+      validity:         row.validity              || '',
+      terms:            row.terms                 || '',
+      freightCharges:   row.freight_charges       ?? 0,
+      subtotal:         row.subtotal              ?? 0,
+      gst:              row.gst                   ?? 0,
+      cgst:             row.cgst                  ?? 0,
+      sgst:             row.sgst                  ?? 0,
+      igst:             row.igst                  ?? 0,
+      gstType:          row.gst_type              || 'cgst_sgst',
+      grandTotal:       row.grand_total           ?? 0,
+      offerStatus:      row.offer_status          || '',
+      status:           row.status               || 'active',
+      previousVersionId: row.previous_version_id  ?? null,
+      originalItemRates: row.original_item_rates  ?? null,
+      items:            Array.isArray(row.items)  ? row.items : [],
+      followUps:        row.follow_ups            || [],
+      paymentDetails:   row.payment_details       || [],
+      lostDetails:      row.lost_details          || [],
+      regretRemarks:    row.regret_remarks        || '',
+      sentAt:           row.sent_at              || null,
+      attachments:      row.attachments           || [],
+      poCopyAttachments: row.po_copy_attachments  || [],
+      material:         row.material             || '',
+      density:          row.density              || '',
+      thickness:        row.thickness            || '',
+      size:             row.size                 || '',
+      quantity:         row.quantity             || '',
+      rate:             row.rate                 || '',
+      date:             row.date                 || '',
+    };
+  }
+
+  /** Map a PostgREST customer row to camelCase for this component. */
+  private mapCustomer(row: any): any {
+    return {
+      id:              row.id,
+      companyName:     row.company_name      || '',
+      name:            row.name              || '',
+      email:           row.email             || '',
+      mobile:          row.mobile            || '',
+      businessVertical: row.business_vertical || '',
+      primaryContact:  row.primary_contact   || {},
+      secondaryContact: row.secondary_contact || {},
+      officeAddress:   row.office_address    || {},
+      billing:         row.billing           || {},
+      shipping:        row.shipping          || {},
+    };
+  }
+
+  /** Map a PostgREST inquiry row to camelCase for matching. */
+  private mapInquiry(row: any): any {
+    const refMatch = (row.inquiry_ref || '').match(/INQ-(\d+)/i);
+    return {
+      _uuid:        row.id,
+      id:           refMatch ? parseInt(refMatch[1], 10) : null,
+      companyName:  row.company_name   || '',
+      customerName: row.customer_name  || '',
+      decision:     row.decision       || '',
+      items:        Array.isArray(row.items) ? row.items : [],
+      inquiryRef:   row.inquiry_ref    || '',
+    };
+  }
+
   async ngOnInit() {
     console.log('🟢 CreateOfferComponent initialized');
 
-    this.customers = await this.db.getAll('customers');
-    console.log('🟢 Customers loaded:', this.customers);
+    const customerRows = await this.apiService.getAll('customers');
+    this.customers = customerRows.map((r: any) => this.mapCustomer(r));
+    console.log('🟢 Customers loaded:', this.customers.length);
 
     // Generate preview offer ID for new offers
     this.previewOfferId = await this.generatePreviewOfferId();
@@ -99,7 +218,7 @@ export class CreateOfferComponent implements OnInit {
       console.log('✏️ Edit mode detected:', state.offer);
 
       this.isEditMode = true;
-      this.editingOfferId = state.offer.id;
+      this.editingOfferId = state.offer.id;  // UUID string
 
       // ✅ Deep clone originalOffer so later mutations to offer.items never bleed into it
       this.originalOffer = {
@@ -125,6 +244,7 @@ export class CreateOfferComponent implements OnInit {
       this.selectedCustomer = this.customers.find(
         (c: any) =>
           (c.id && c.id === this.offer.customerId) ||
+          (c.companyName?.trim().toLowerCase() === this.offer.customerName?.trim().toLowerCase()) ||
           (c.name?.trim().toLowerCase() === this.offer.customerName?.trim().toLowerCase())
       ) || null;
 
@@ -133,24 +253,16 @@ export class CreateOfferComponent implements OnInit {
       // ✅ Restore inquiry details
       if (this.offer.inquiryNo != null) {
         try {
-          let inquiry: any = null;
-
-          try {
-            inquiry = await this.db.getById('inquiries', this.offer.inquiryNo);
-          } catch (e) {
-            inquiry = null;
-          }
-
-          if (!inquiry) {
-            const allInquiries = await this.db.getAll('inquiries');
-            // eslint-disable-next-line eqeqeq
-            inquiry = allInquiries.find((i: any) => i.id == this.offer.inquiryNo) || null;
-          }
+          // Load all inquiries and find by sequential number
+          const inquiryRows = await this.apiService.getAll('inquiries');
+          const allMapped = inquiryRows.map((r: any) => this.mapInquiry(r));
+          const inquiry = allMapped.find(
+            (i: any) => i.id === this.offer.inquiryNo
+          ) || null;
 
           this.selectedInquiry = inquiry;
 
           // ✅ Restore frozen rate snapshot from persisted originalItemRates
-          // These were locked in at first save and never change regardless of edits
           if (this.offer.originalItemRates?.length) {
             this.inquiryItemRates = [...this.offer.originalItemRates];
           } else {
@@ -176,17 +288,19 @@ export class CreateOfferComponent implements OnInit {
     const customer = this.selectedCustomer;
 
     this.offer.customerId = customer.id;
-    this.offer.customerName = customer.name;
+    this.offer.customerName = customer.companyName || customer.name;
     this.offer.customerSnapshot = { ...customer };
     this.offer.businessVertical = customer.businessVertical || '';
 
-    const allInquiries = await this.db.getAll('inquiries');
+    // Load inquiries for this customer
+    const inquiryRows = await this.apiService.getAll('inquiries');
+    const allInquiries = inquiryRows.map((r: any) => this.mapInquiry(r));
 
     const customerName = this.normalizeText(customer.name);
-    const companyName = this.normalizeText(customer.companyName || customer.name);
+    const companyName  = this.normalizeText(customer.companyName || customer.name);
     this.inquiries = allInquiries.filter((i: any) => {
       const inqCustomerName = this.normalizeText(i.customerName);
-      const inqCompanyName = this.normalizeText(i.companyName);
+      const inqCompanyName  = this.normalizeText(i.companyName);
       return inqCustomerName === customerName || inqCompanyName === companyName;
     });
 
@@ -211,7 +325,7 @@ export class CreateOfferComponent implements OnInit {
 
   private async rebuildOfferItemsFromSelection() {
     if (!this.selectedInquiry?.items) return;
-    const inventory = await this.db.getAll('inventory');
+    const inventory = await this.apiService.getAll('inventory');
     const indices = this.selectedInquiryItemIndices.length > 0
       ? this.selectedInquiryItemIndices
       : this.selectedInquiry.items.map((_: any, i: number) => i);
@@ -219,7 +333,7 @@ export class CreateOfferComponent implements OnInit {
       const i = this.selectedInquiry.items[idx];
       const inquiryName = (i.productName || '').toLowerCase().trim();
       const inventoryItem = inventory.find((inv: any) =>
-        (inv.displayName || '').toLowerCase().trim().startsWith(inquiryName)
+        (inv.displayName || inv.name || '').toLowerCase().trim().startsWith(inquiryName)
       );
       const rate = inventoryItem?.price || 0;
       const qty = i.qty || 0;
@@ -235,17 +349,17 @@ export class CreateOfferComponent implements OnInit {
 
   async selectInquiry(inquiry: any) {
     this.selectedInquiry = { ...inquiry };
-    this.offer.inquiryNo = inquiry.id;
+    this.offer.inquiryNo = inquiry.id; // sequential number
     // Default: all items selected
     this.selectedInquiryItemIndices = (inquiry.items || []).map((_: any, i: number) => i);
 
-    const inventory = await this.db.getAll('inventory');
+    const inventory = await this.apiService.getAll('inventory');
 
-    this.offer.items = inquiry.items.map((i: any) => {
+    this.offer.items = (inquiry.items || []).map((i: any) => {
       const inquiryName = (i.productName || '').toLowerCase().trim();
 
       const inventoryItem = inventory.find((inv: any) => {
-        const invName = (inv.displayName || '').toLowerCase().trim();
+        const invName = (inv.displayName || inv.name || '').toLowerCase().trim();
         return invName.startsWith(inquiryName);
       });
 
@@ -275,10 +389,10 @@ export class CreateOfferComponent implements OnInit {
     if (!this.offer.gstType) this.offer.gstType = 'cgst_sgst';
 
     // Auto-fill terms from the latest offer made for this inquiry
-    const allOffers = await this.db.getAll('offers');
-    const inquiryOffers = allOffers.filter(
-      (o: any) => o.inquiryNo == inquiry.id && o.status !== 'superseded'
-    );
+    const offerRows = await this.apiService.getAll('offers');
+    const inquiryOffers = offerRows
+      .filter((r: any) => r.inquiry_no == inquiry.id && r.status !== 'superseded')
+      .map((r: any) => this.fromDbRow(r));
     if (inquiryOffers.length > 0) {
       const latest = inquiryOffers[inquiryOffers.length - 1];
       this.offer.freightCharges = latest.freightCharges || 0;
@@ -372,17 +486,17 @@ export class CreateOfferComponent implements OnInit {
     return `${existingRef}-v2`;
   }
 
+  /** Count active offer refs to determine the next sequential offer number. */
   async generatePreviewOfferId(): Promise<string> {
-    const allOffers = await this.db.getAll('offers');
-    const activeOffers = allOffers.filter((o: any) => o.status !== 'superseded');
-    const maxId = activeOffers.reduce((max: number, o: any) => Math.max(max, o.id || 0), 0);
+    const rows = await this.apiService.getAll('offers');
+    const active = rows.filter((r: any) => r.status !== 'superseded');
+    const maxNum = active.reduce((max: number, r: any) => {
+      // Parse the 4-digit counter from offer_ref: NIEC/MDD/YYYY/NNNN[-vX]
+      const m = (r.offer_ref || '').match(/\/(\d{4})(?:-v\d+)?$/);
+      return m ? Math.max(max, parseInt(m[1], 10)) : max;
+    }, 0);
     const y = new Date().getFullYear();
-    return `NIEC/MDD/${y}/${String(maxId + 1).padStart(4, '0')}`;
-  }
-
-  generateOfferRef(id: number) {
-    const y = new Date().getFullYear();
-    return `NIEC/MDD/${y}/${String(id).padStart(4, '0')}`;
+    return `NIEC/MDD/${y}/${String(maxNum + 1).padStart(4, '0')}`;
   }
 
   getFollowUpDate(days: number = 2): string {
@@ -398,74 +512,56 @@ export class CreateOfferComponent implements OnInit {
 
     if (this.isEditMode && this.editingOfferId && this.originalOffer) {
 
-      // STEP 1: Mark original offer as superseded (using deep-cloned originalOffer — untouched)
-      await this.db.put('offers', {
+      // STEP 1: Mark original offer as superseded (using deep-cloned originalOffer)
+      await this.apiService.put('offers', this.toDbRow({
         ...this.originalOffer,
+        id: this.editingOfferId,
         status: 'superseded'
-      });
+      }));
       console.log('🗂️ Original offer marked as superseded:', this.editingOfferId);
 
       // STEP 2: Create new versioned offer entry with current (edited) state
-      const previousRef = this.originalOffer.offerRef
-        || this.generateOfferRef(this.editingOfferId);
-
+      const previousRef = this.originalOffer.offerRef || this.previewOfferId;
       const newVersionedRef = this.nextVersionedRef(previousRef);
 
-      // Strip id so IndexedDB assigns a new one
+      // Strip id so Postgres assigns a new UUID
       const { id, ...offerWithoutId } = this.offer;
 
-      const newOfferData = {
+      const newOfferRow = this.toDbRow({
         ...offerWithoutId,
         offerRef: newVersionedRef,
         date: new Date().toISOString().slice(0, 10),
         status: 'active',
         previousVersionId: this.editingOfferId
-      };
+      });
 
-      const newOfferId = await this.db.add('offers', newOfferData);
-      console.log('✅ New versioned offer created:', newVersionedRef, '(ID:', newOfferId, ')');
+      const newOfferId = await this.apiService.add('offers', newOfferRow);
+      console.log('✅ New versioned offer created:', newVersionedRef, '(UUID:', newOfferId, ')');
 
     } else {
 
-      // CREATE: Brand new offer
-      const offerId = await this.db.add('offers', {
+      // CREATE: Brand new offer — let Postgres generate UUID, then patch with offerRef
+      const offerRow = this.toDbRow({
         ...this.offer,
+        offerRef: this.previewOfferId,
         date: new Date().toISOString().slice(0, 10),
         status: 'active',
         offerStatus: this.offer.offerStatus || 'order_received'
       });
 
-      const offerRef = this.generateOfferRef(offerId);
-      this.offer.offerRef = offerRef;
+      const offerId = await this.apiService.add('offers', offerRow);
+      this.offer.id = offerId;
+      this.offer.offerRef = this.previewOfferId;
 
-      // Persist offerRef back to DB so other pages can read it
-      await this.db.put('offers', {
-        ...this.offer,
-        id: offerId,
-        date: new Date().toISOString().slice(0, 10),
-        status: 'active',
-        offerStatus: this.offer.offerStatus || 'order_received'
+      console.log('✅ New offer created (UUID:', offerId, '| Ref:', this.previewOfferId, ')');
+
+      await this.addReminder({
+        type: 'offer',
+        name: this.offer.customerName || '',
+        referenceNo: this.previewOfferId || '',
+        daysFromNow: 2,
+        note: `Follow up on offer ${this.previewOfferId}`,
       });
-
-      console.log('✅ New offer created with ID:', offerId, '| Ref:', offerRef);
-
-      try {
-        const customer = this.offer.customerSnapshot;
-        const mobile = customer?.mobile || customer?.phone || '';
-
-        await this.db.createAutoReminder({
-          type: 'offer',
-          name: this.offer.customerName,
-          mobile: mobile,
-          referenceNo: offerRef,
-          followUpDays: 2,
-          note: `Follow-up offer ${offerRef} - ${this.offer.customerName}`
-        });
-
-        console.log('✅ Reminder created for new offer');
-      } catch (error) {
-        console.error('❌ Reminder creation failed:', error);
-      }
     }
 
     console.log('═══════════════════════════════════════');
@@ -505,7 +601,7 @@ export class CreateOfferComponent implements OnInit {
 
   async openLibraryPicker() {
     try {
-      this.libraryDocuments = await this.db.getAll('documents');
+      this.libraryDocuments = await this.apiService.getAll('documents');
     } catch {
       this.libraryDocuments = [];
     }
@@ -532,8 +628,8 @@ export class CreateOfferComponent implements OnInit {
     if (!alreadyAdded) {
       this.offer.attachments.push({
         name: doc.name,
-        type: doc.fileType,
-        data: doc.fileData,
+        type: doc.fileType || doc.file_type,
+        data: doc.fileData || doc.file_data,
         libraryId: doc.id
       });
     }
@@ -553,5 +649,25 @@ export class CreateOfferComponent implements OnInit {
     const num = match ? parseInt(match[1], 10) : Number(raw);
     if (!Number.isFinite(num) || num <= 0) return raw;
     return `INQ-${String(num).padStart(3, '0')}`;
+  }
+
+  private async addReminder(opts: {
+    type: string; name: string; referenceNo: string; daysFromNow: number; note: string;
+  }): Promise<void> {
+    try {
+      const date = new Date();
+      date.setDate(date.getDate() + opts.daysFromNow);
+      await this.apiService.add('reminders', {
+        date:         date.toISOString().slice(0, 10),
+        time:         '10:00',
+        type:         opts.type,
+        name:         opts.name,
+        mobile:       '',
+        reference_no: opts.referenceNo,
+        note:         opts.note,
+        source:       'system',
+        status:       'pending',
+      });
+    } catch { /* reminder creation is non-critical */ }
   }
 }

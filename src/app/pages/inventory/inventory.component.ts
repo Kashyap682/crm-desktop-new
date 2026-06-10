@@ -2,7 +2,7 @@ import { Component, OnInit, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import * as XLSX from 'xlsx';
-import { DBService } from '../../service/db.service';
+import { ApiService } from '../../service/api.service';
 
 @Component({
   selector: 'app-inventory',
@@ -31,7 +31,7 @@ export class InventoryComponent implements OnInit {
   activeMenuId: any = null;
   menuPosition: { top: string; left: string } = { top: '0px', left: '0px' };
 
-  constructor(private dbService: DBService) { }
+  constructor(private apiService: ApiService) { }
 
   toggleActionMenu(event: Event, item: any) {
     event.stopPropagation();
@@ -60,7 +60,7 @@ export class InventoryComponent implements OnInit {
   }
 
   ngOnInit() {
-    this.loadFromIndexedDB();
+    this.loadItems();
     this.loadVendorNames();
     // Auto-fill from inquiry if navigated with state
     const state = (history.state || {}) as any;
@@ -74,7 +74,7 @@ export class InventoryComponent implements OnInit {
   =============================== */
   async loadVendorNames() {
     try {
-      const vendors = await this.dbService.getAll('vendors');
+      const vendors = await this.apiService.getAll('vendors');
       this.vendorNames = vendors
         .map((v: any) => v.companyName)
         .filter((name: string) => !!name)
@@ -91,7 +91,7 @@ export class InventoryComponent implements OnInit {
   async generateNextProductIdByGroup(group: string): Promise<string> {
     const prefix = this.groupPrefixMap[group] || 'GEN';
 
-    const allProducts = await this.dbService.getAll('inventory');
+    const allProducts = await this.apiService.getAll('inventory');
     const groupProducts = allProducts.filter((p: any) => p.group === group);
 
     let maxCounter = 0;
@@ -196,7 +196,7 @@ export class InventoryComponent implements OnInit {
       .join(' | ');
 
     try {
-      const allProducts = await this.dbService.getAll('inventory');
+      const allProducts = await this.apiService.getAll('inventory');
 
       const formName = this.form.displayName || this.form.name;
 
@@ -211,7 +211,7 @@ export class InventoryComponent implements OnInit {
 
         const updatedQty = Number(existingProduct.quantity ?? 0) + Number(this.form.quantity ?? 0);
 
-        await this.dbService.put('inventory', {
+        await this.apiService.put('inventory', {
           ...existingProduct,
           quantity: updatedQty,
           numberOfUnits: Number(existingProduct.numberOfUnits ?? 0) + Number(this.form.numberOfUnits ?? 0)
@@ -227,7 +227,7 @@ export class InventoryComponent implements OnInit {
           ? this.form.name
           : `${this.form.location}_${formName}_${this.form.size || 'nosize'}`.toLowerCase();
 
-        await this.dbService.put('inventory', {
+        await this.apiService.put('inventory', {
           ...this.form,
           name: itemKey,
           displayName: formName,
@@ -241,7 +241,7 @@ export class InventoryComponent implements OnInit {
         console.log(this.isEditing ? 'Updated product:' : 'Created new product:', formName);
       }
 
-      await this.loadFromIndexedDB();
+      await this.loadItems();
       this.showModal = false;
     } catch (error) {
       console.error('Error saving inventory:', error);
@@ -257,9 +257,9 @@ export class InventoryComponent implements OnInit {
   /* ===============================
      Data Load / Delete
   =============================== */
-  async loadFromIndexedDB() {
+  async loadItems() {
     try {
-      const raw = await this.dbService.getAll('inventory');
+      const raw = await this.apiService.getAll('inventory');
       this.items = raw.map((item: any) => ({
         ...item,
         location: this.normalizeLocation(item.location),
@@ -276,8 +276,8 @@ export class InventoryComponent implements OnInit {
     const displayName = item.displayName || item.name;
     if (confirm(`Are you sure you want to delete "${displayName}" (${item.size})?`)) {
       try {
-        await this.dbService.delete('inventory', item.name);
-        await this.loadFromIndexedDB();
+        await this.apiService.delete('inventory', item.name);
+        await this.loadItems();
         console.log('✅ Deleted item:', displayName);
         this.closeActionMenu();
       } catch (error) {
@@ -317,7 +317,7 @@ export class InventoryComponent implements OnInit {
         const wb = XLSX.read(ev!.target!.result, { type: 'array' });
         const rows: any[] = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
 
-        const existingProducts = await this.dbService.getAll('inventory');
+        const existingProducts = await this.apiService.getAll('inventory');
 
         let updatedCount = 0;
         let newCount = 0;
@@ -339,7 +339,7 @@ export class InventoryComponent implements OnInit {
             const updatedQty = Number(existingProduct.quantity ?? 0) + rowQty;
             const rowNumberOfUnits = Number(row['No. of Rolls/Bundles/pcs'] || row['No. of rolls/Bundles/pcs'] || row['numberOfUnits'] || 0);
 
-            await this.dbService.put('inventory', {
+            await this.apiService.put('inventory', {
               ...existingProduct,
               quantity: updatedQty,
               numberOfUnits: Number(existingProduct.numberOfUnits ?? 0) + rowNumberOfUnits
@@ -394,12 +394,12 @@ export class InventoryComponent implements OnInit {
               attachment: null
             };
 
-            await this.dbService.put('inventory', newProduct);
+            await this.apiService.put('inventory', newProduct);
             newCount++;
           }
         }
 
-        await this.loadFromIndexedDB();
+        await this.loadItems();
         alert(`Excel imported successfully!\n\nNew products: ${newCount}\nUpdated products: ${updatedCount}`);
       } catch (error) {
         console.error('❌ Error importing Excel:', error);

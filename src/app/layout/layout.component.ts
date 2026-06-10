@@ -1,6 +1,7 @@
 import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterModule } from '@angular/router';
+import { AuthService } from '../service/auth.service';
 
 @Component({
   selector: 'app-layout',
@@ -11,4 +12,10 @@ import { RouterModule } from '@angular/router';
 })
 export class LayoutComponent {
   sidebarCollapsed = false;
+
+  constructor(public authService: AuthService) {}
+
+  get isAdmin(): boolean {
+    return this.authService.getUser()?.app_role === 'admin';
+  }
 }

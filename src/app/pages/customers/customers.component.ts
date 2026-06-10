@@ -4,7 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { utils, writeFile } from 'xlsx';
-import { DBService } from '../../service/db.service';
+import { ApiService } from '../../service/api.service';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -328,7 +328,7 @@ export class CustomersComponent {
     const reader = new FileReader();
     reader.onload = async () => {
       customer.panFile = { name: file.name, type: file.type, data: reader.result as string };
-      await this.dbService.put('customers', customer);
+      await this.apiService.put('customers', this.toDbRow(customer));
     };
     reader.readAsDataURL(file);
   }
@@ -360,7 +360,7 @@ export class CustomersComponent {
     const reader = new FileReader();
     reader.onload = async () => {
       customer.msmeFile = { name: file.name, type: file.type, data: reader.result as string };
-      await this.dbService.put('customers', customer);
+      await this.apiService.put('customers', this.toDbRow(customer));
     };
     reader.readAsDataURL(file);
   }
@@ -368,19 +368,19 @@ export class CustomersComponent {
   async removePanFile(customer: any) {
     if (!confirm('Remove PAN document?')) return;
     customer.panFile = undefined;
-    await this.dbService.put('customers', customer);
+    await this.apiService.put('customers', this.toDbRow(customer));
   }
 
   async removeMSMEFile(customer: any) {
     if (!confirm('Remove MSME document?')) return;
     customer.msmeFile = undefined;
     customer.msme = '';
-    await this.dbService.put('customers', customer);
+    await this.apiService.put('customers', this.toDbRow(customer));
   }
 
   async removeAddrGstFile(customer: any, addr: any) {
     addr.gstFile = undefined;
-    await this.dbService.put('customers', customer);
+    await this.apiService.put('customers', this.toDbRow(customer));
   }
 
   async onAddrGstFileSelect(event: any, customer: any, addr: any) {
@@ -389,15 +389,82 @@ export class CustomersComponent {
     const reader = new FileReader();
     reader.onload = async () => {
       addr.gstFile = { name: file.name, type: file.type, data: reader.result as string };
-      await this.dbService.put('customers', customer);
+      await this.apiService.put('customers', this.toDbRow(customer));
     };
     reader.readAsDataURL(file);
     event.target.value = '';
   }
 
-  constructor(private router: Router, private dbService: DBService) {
-    this.loadFromIndexedDB();
-    this.dbService.getAll('inventory').then(inv => this.inventory = inv);
+  constructor(private router: Router, private apiService: ApiService) {
+    this.loadItems();
+    this.apiService.getAll('inventory').then(inv => this.inventory = inv);
+  }
+
+  // ── snake_case ↔ camelCase mapping ──────────────────────────
+
+  /**
+   * Serialize the component's camelCase customer object to a
+   * snake_case DB row for PostgREST PATCH / POST.
+   */
+  private toDbRow(c: any): any {
+    return {
+      ...(c.id ? { id: c.id } : {}),
+      customer_ref:        c.customerId        ?? null,
+      customer_type:       c.customerType      ?? null,
+      company_name:        c.companyName       ?? '',
+      name:                c.name              ?? null,
+      website:             c.website           ?? null,
+      email:               c.email             ?? null,
+      mobile:              c.mobile            ?? null,
+      pan:                 c.pan               ?? null,
+      msme:                c.msme              ?? null,
+      logo:                c.logo              ?? null,
+      pan_file:            c.panFile           ?? null,
+      msme_file:           c.msmeFile          ?? null,
+      office_address:      c.officeAddress     ?? null,
+      billing:             c.billing           ?? null,
+      billing2:            c.billing2          ?? null,
+      shipping_addresses:  c.shippingAddresses ?? null,
+      primary_contact:     c.primaryContact    ?? null,
+      secondary_contact:   c.secondaryContact  ?? null,
+      product_materials:   c.productMaterials  ?? null,
+    };
+  }
+
+  /**
+   * Deserialize a snake_case PostgREST row back into the
+   * component's camelCase customer shape.
+   */
+  private fromDbRow(row: any): any {
+    const pc = row.primary_contact || {};
+    const productMaterials =
+      Array.isArray(row.product_materials) && row.product_materials.length
+        ? row.product_materials
+        : [this.emptyMaterial()];
+    return {
+      id:               row.id,
+      customerId:       row.customer_ref   || '',
+      customerType:     row.customer_type  || '',
+      companyName:      row.company_name   || '',
+      name:             row.name           || '',
+      website:          row.website        || '',
+      email:            row.email          || '',
+      mobile:           row.mobile         || pc.mobile || '',
+      pan:              row.pan            || '',
+      msme:             row.msme           || '',
+      logo:             row.logo           || undefined,
+      panFile:          row.pan_file       || undefined,
+      msmeFile:         row.msme_file      || undefined,
+      officeAddress:    this.normalizeAddr(row.office_address),
+      billing:          this.normalizeAddr(row.billing),
+      billing2:         row.billing2 ? this.normalizeAddr(row.billing2) : null,
+      shippingAddresses: Array.isArray(row.shipping_addresses) && row.shipping_addresses.length
+        ? row.shipping_addresses.map((a: any) => this.normalizeAddr(a))
+        : [this.normalizeAddr(null)],
+      primaryContact:   { title: '', firstName: '', lastName: '', mobile: '', email: '', remarks: '', ...pc },
+      secondaryContact: { title: '', firstName: '', lastName: '', mobile: '', email: '', remarks: '', ...(row.secondary_contact || {}) },
+      productMaterials,
+    };
   }
 
   /* ─── Migrate old productPrefs → productMaterials array ─── */
@@ -473,25 +540,9 @@ export class CustomersComponent {
   }
 
   /* ─── Load ─── */
-  async loadFromIndexedDB() {
-    const raw = await this.dbService.getAll('customers');
-    this.customers = raw.map((c: any) => {
-      const officeAddr = this.normalizeAddr(c.officeAddress);
-      const billingAddr = this.normalizeAddr(c.billing);
-      const pc = c.primaryContact || {};
-      return {
-        ...c,
-        mobile: c.mobile || pc.mobile || officeAddr.mobile || '',
-        officeAddress: officeAddr,
-        billing:  billingAddr,
-        shippingAddresses: Array.isArray(c.shippingAddresses) && c.shippingAddresses.length
-          ? c.shippingAddresses.map((a: any) => this.normalizeAddr(a))
-          : [this.normalizeAddr(c.shipping)],
-        primaryContact:   { title: '', firstName: '', lastName: '', mobile: '', email: '', remarks: '', ...pc },
-        secondaryContact: { title: '', firstName: '', lastName: '', mobile: '', email: '', remarks: '', ...(c.secondaryContact || {}) },
-        productMaterials: this.migrateProductMaterials(c)
-      };
-    });
+  async loadItems() {
+    const rows = await this.apiService.getAll('customers');
+    this.customers = rows.map((row: any) => this.fromDbRow(row));
   }
 
   filteredCustomers() {
@@ -507,9 +558,8 @@ export class CustomersComponent {
     this.showBilling2 = false;
     this.newCustomer = this.getEmptyCustomer();
     this.sameAsBilling = false;
-    this.dbService.getAll('customers').then(customers => {
-      this.newCustomer.customerId = this.generateCustomerId(customers);
-    });
+    // Use already-loaded list to derive next ID — avoids an extra round-trip
+    this.newCustomer.customerId = this.generateCustomerId(this.customers);
   }
 
   openEditModal(customer: any) {
@@ -552,13 +602,13 @@ export class CustomersComponent {
     if (this.isEditing && this.editingIndex !== null) {
       const realIndex = this.customers.findIndex(c => c.id === this.newCustomer.id);
       const storeIndex = realIndex !== -1 ? realIndex : this.editingIndex;
-      await this.dbService.put('customers', this.newCustomer);
+      await this.apiService.put('customers', this.toDbRow(this.newCustomer));
       if (storeIndex !== null && storeIndex !== -1) {
         this.customers[storeIndex] = JSON.parse(JSON.stringify(this.newCustomer));
       }
     } else {
-      this.newCustomer.id = Date.now();
-      await this.dbService.add('customers', this.newCustomer);
+      const newId = await this.apiService.add('customers', this.toDbRow(this.newCustomer));
+      this.newCustomer.id = newId;
       this.customers.push(JSON.parse(JSON.stringify(this.newCustomer)));
     }
 
@@ -569,12 +619,13 @@ export class CustomersComponent {
   async deleteCustomer(customer: any) {
     const index = this.customers.findIndex(c => c.id === customer.id);
     if (index === -1) return;
-    await this.dbService.delete('customers', customer.id);
+    await this.apiService.delete('customers', customer.id);
     this.customers.splice(index, 1);
   }
 
   async resetCustomers() {
-    await this.dbService.clearStore('customers');
+    if (!confirm('Delete ALL customers? This cannot be undone.')) return;
+    await this.apiService.deleteWhere('customers', { org_id: this.apiService.getOrgId() });
     this.customers = [];
   }
 
@@ -589,8 +640,8 @@ export class CustomersComponent {
       const ws = wb.Sheets[wb.SheetNames[0]];
       const data = utils.sheet_to_json(ws);
 
-      const existingCustomers = await this.dbService.getAll('customers');
-      let lastNumber = this.getLastCustomerNumber(existingCustomers);
+      // Use already-loaded customers list for ID generation
+      let lastNumber = this.getLastCustomerNumber(this.customers);
 
       const normalizeId = (raw: any): string => {
         if (!raw && raw !== 0) return '';
@@ -649,7 +700,6 @@ export class CustomersComponent {
         }
         if (!productMaterials.length) productMaterials.push({ material: '', form1: '', form2: '', form3: '' });
         return {
-          id: Date.now() + Math.random(),
           customerId: normalizeId(row['Customer ID']) || `CUS-${lastNumber.toString().padStart(3, '0')}`,
           customerType: row['Customer Type'] || '',
           companyName: row['Company Name'] || '',
@@ -668,10 +718,10 @@ export class CustomersComponent {
       });
 
       for (const c of formatted) {
-        await this.dbService.add('customers', c);
-        existingCustomers.push(c);
+        const newId = await this.apiService.add('customers', this.toDbRow(c));
+        (c as any).id = newId;
+        this.customers.push(c);
       }
-      this.customers = existingCustomers;
     };
 
     reader.readAsBinaryString(target.files[0]);
@@ -734,12 +784,11 @@ export class CustomersComponent {
   }
 
   downloadExcel() {
-    this.dbService.getAll('customers').then((customers: any[]) => {
-      const ws = utils.json_to_sheet(customers.map(c => this.customerRow(c)));
-      const wb = utils.book_new();
-      utils.book_append_sheet(wb, ws, 'Customers');
-      writeFile(wb, 'Customers.xlsx');
-    });
+    // Use the already-loaded list — no extra round-trip needed
+    const ws = utils.json_to_sheet(this.customers.map(c => this.customerRow(c)));
+    const wb = utils.book_new();
+    utils.book_append_sheet(wb, ws, 'Customers');
+    writeFile(wb, 'Customers.xlsx');
   }
 
   downloadCustomerTemplate() {

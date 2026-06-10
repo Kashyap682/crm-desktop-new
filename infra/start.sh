@@ -8,6 +8,7 @@ POD_NAME="crm-pod"
 PG_CONTAINER="crm-postgres"
 PGREST_CONTAINER="crm-postgrest"
 PGADMIN_CONTAINER="crm-pgadmin"
+AUTH_CONTAINER="crm-auth"
 PG_DATA_VOLUME="crm-pgdata"
 PGADMIN_DATA_VOLUME="crm-pgadmin-data"
 
@@ -48,6 +49,7 @@ if ! podman container exists "$PGREST_CONTAINER"; then
     -e PGRST_DB_ANON_ROLE="$PGRST_DB_ANON_ROLE" \
     -e PGRST_SERVER_PORT="$PGRST_SERVER_PORT" \
     -e PGRST_OPENAPI_SERVER_PROXY_URI="http://localhost:3000" \
+    -e PGRST_JWT_SECRET="$JWT_SECRET" \
     docker.io/postgrest/postgrest:v12.2.0
 else
   podman start "$PGREST_CONTAINER"
@@ -68,12 +70,25 @@ else
   podman start "$PGADMIN_CONTAINER"
 fi
 
+echo "==> Building and starting auth service..."
+podman build -t crm-auth-image "$SCRIPT_DIR/auth" -q
+if ! podman container exists "$AUTH_CONTAINER"; then
+  podman run -d \
+    --name "$AUTH_CONTAINER" \
+    -p 8001:8001 \
+    -e DATABASE_URL="postgres://$POSTGRES_USER:$POSTGRES_PASSWORD@host.containers.internal:5432/$POSTGRES_DB" \
+    -e JWT_SECRET="$JWT_SECRET" \
+    -e AUTH_PORT="8001" \
+    crm-auth-image
+else
+  podman start "$AUTH_CONTAINER"
+fi
+
 echo ""
 echo "✅ CRM backend is running:"
 echo "   PostgreSQL  → localhost:5432         (db: $POSTGRES_DB, user: $POSTGRES_USER)"
 echo "   PostgREST   → http://localhost:3000"
+echo "   Auth        → http://localhost:8001"
 echo "   pgAdmin     → http://localhost:8080  (login: $PGADMIN_EMAIL / $POSTGRES_PASSWORD)"
 echo ""
-echo "   pgAdmin server connection:"
-echo "     Host: host.containers.internal   Port: 5432"
-echo "     DB:   $POSTGRES_DB   User: $POSTGRES_USER   Password: $POSTGRES_PASSWORD"
+echo "   Default login: admin@navbharat.com / changeme123"

@@ -2,7 +2,7 @@ import { Component, HostListener } from "@angular/core";
 import { CommonModule } from "@angular/common";
 import { FormsModule } from "@angular/forms";
 import { Router } from "@angular/router";
-import { DBService } from '../../service/db.service';
+import { ApiService } from '../../service/api.service';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -90,13 +90,115 @@ export class OffersComponent {
 
   offerLetterKeys = Object.keys(this.offerLetter);
 
-  constructor(private router: Router, private dbService: DBService) {
+  constructor(private router: Router, private apiService: ApiService) {
     this.loadOffers();
     this.loadInquiries();
   }
 
+  // ── Mapping helpers ──────────────────────────────────────
+
+  private toDbRow(offer: any): any {
+    const row: any = {
+      offer_ref:           offer.offerRef            ?? null,
+      inquiry_no:          offer.inquiryNo            ?? null,
+      customer_name:       offer.customerName         ?? null,
+      customer_snapshot:   offer.customerSnapshot     ?? null,
+      business_vertical:   offer.businessVertical     ?? null,
+      payment_terms:       offer.paymentTerms         ?? null,
+      validity:            offer.validity             ?? null,
+      terms:               offer.terms               ?? null,
+      freight_charges:     offer.freightCharges       ?? null,
+      subtotal:            offer.subtotal             ?? null,
+      gst:                 offer.gst                 ?? null,
+      cgst:                offer.cgst                ?? null,
+      sgst:                offer.sgst                ?? null,
+      igst:                offer.igst                ?? null,
+      gst_type:            offer.gstType             ?? null,
+      grand_total:         offer.grandTotal           ?? null,
+      offer_status:        offer.offerStatus          ?? null,
+      status:              offer.status              ?? 'active',
+      previous_version_id: offer.previousVersionId   ?? null,
+      original_item_rates: offer.originalItemRates   ?? null,
+      items:               offer.items               ?? [],
+      follow_ups:          offer.followUps            ?? null,
+      payment_details:     offer.paymentDetails       ?? null,
+      lost_details:        offer.lostDetails          ?? null,
+      regret_remarks:      offer.regretRemarks        ?? null,
+      sent_at:             offer.sentAt              ?? null,
+      attachments:         offer.attachments          ?? null,
+      po_copy_attachments: offer.poCopyAttachments   ?? null,
+      material:            offer.material            ?? null,
+      density:             offer.density             ?? null,
+      thickness:           offer.thickness           ?? null,
+      size:                offer.size                ?? null,
+      quantity:            offer.quantity            ?? null,
+      rate:                offer.rate                ?? null,
+      date:                offer.date                ?? new Date().toISOString().slice(0, 10),
+    };
+    if (offer.id) row.id = offer.id;
+    return row;
+  }
+
+  private fromDbRow(row: any): any {
+    return {
+      id:               row.id,
+      offerRef:         row.offer_ref             || '',
+      inquiryNo:        row.inquiry_no            ?? null,
+      customerName:     row.customer_name         || '',
+      customerSnapshot: row.customer_snapshot     || null,
+      businessVertical: row.business_vertical     || '',
+      paymentTerms:     row.payment_terms         || '',
+      validity:         row.validity              || '',
+      terms:            row.terms                 || '',
+      freightCharges:   row.freight_charges       ?? 0,
+      subtotal:         row.subtotal              ?? 0,
+      gst:              row.gst                   ?? 0,
+      cgst:             row.cgst                  ?? 0,
+      sgst:             row.sgst                  ?? 0,
+      igst:             row.igst                  ?? 0,
+      gstType:          row.gst_type              || 'cgst_sgst',
+      grandTotal:       row.grand_total           ?? 0,
+      offerStatus:      row.offer_status          || '',
+      status:           row.status               || 'active',
+      previousVersionId: row.previous_version_id  ?? null,
+      originalItemRates: row.original_item_rates  ?? null,
+      items:            Array.isArray(row.items)  ? row.items : [],
+      followUps:        row.follow_ups            || [],
+      paymentDetails:   row.payment_details       || [],
+      lostDetails:      row.lost_details          || [],
+      regretRemarks:    row.regret_remarks        || '',
+      sentAt:           row.sent_at              || null,
+      attachments:      row.attachments           || [],
+      poCopyAttachments: row.po_copy_attachments  || [],
+      material:         row.material             || '',
+      density:          row.density              || '',
+      thickness:        row.thickness            || '',
+      size:             row.size                 || '',
+      quantity:         row.quantity             || '',
+      rate:             row.rate                 || '',
+      date:             row.date                 || '',
+    };
+  }
+
+  /** Map a PostgREST inquiry row to the shape this component needs. */
+  private mapInquiry(row: any): any {
+    const refMatch = (row.inquiry_ref || '').match(/INQ-(\d+)/i);
+    return {
+      _uuid:        row.id,
+      id:           refMatch ? parseInt(refMatch[1], 10) : null,
+      companyName:  row.company_name   || '',
+      customerName: row.customer_name  || '',
+      decision:     row.decision       || '',
+      items:        Array.isArray(row.items) ? row.items : [],
+      inquiryRef:   row.inquiry_ref    || '',
+    };
+  }
+
+  // ── Load data ────────────────────────────────────────────
+
   async loadInquiries() {
-    this.inquiries = await this.dbService.getAll('inquiries');
+    const rows = await this.apiService.getAll('inquiries');
+    this.inquiries = rows.map((r: any) => this.mapInquiry(r));
   }
 
   private toInquiryId(value: any): number | null {
@@ -142,7 +244,8 @@ export class OffersComponent {
   async updateInquiryDecision(inq: any, decision: string) {
     if (!inq) return;
     inq.decision = decision || '';
-    await this.dbService.put('inquiries', inq);
+    // Use the stored UUID (_uuid) as the row identifier for PostgREST
+    await this.apiService.put('inquiries', { id: inq._uuid, decision: inq.decision });
     await this.loadInquiries();
   }
 
@@ -172,7 +275,7 @@ export class OffersComponent {
   private async findInventoryItemForOfferItem(item: any): Promise<any> {
     if (!item?.name) return null;
 
-    const inventory = await this.dbService.getAll('inventory');
+    const inventory = await this.apiService.getAll('inventory');
 
     const itemName = item.name.toLowerCase();
 
@@ -242,12 +345,15 @@ export class OffersComponent {
   }
 
   async loadOffers() {
-    const data = await this.dbService.getAll('offers');
-    data.forEach((row: any) => {
-      if (!row.offerRef && row.id) row.offerRef = this.generateOfferRef(row.id);
-    });
-    this.offers = data.filter((o: any) => o.status !== 'superseded').reverse();
-    this.proformas = await this.dbService.getAll('proformas');
+    const rows = await this.apiService.getAll('offers');
+    const mapped = rows.map((r: any) => this.fromDbRow(r));
+    this.offers = mapped.filter((o: any) => o.status !== 'superseded').reverse();
+
+    try {
+      this.proformas = await this.apiService.getAll('proformas');
+    } catch {
+      this.proformas = [];
+    }
 
     // Auto-open email modal when redirected from "Save & Send Email"
     const state = history.state as any;
@@ -259,8 +365,8 @@ export class OffersComponent {
     }
   }
 
-  getLinkedPIs(offerId: number): any[] {
-    return this.proformas.filter((p: any) => p.linkedOfferId === offerId);
+  getLinkedPIs(offerId: any): any[] {
+    return this.proformas.filter((p: any) => p.linkedOfferId === offerId || p.linked_offer_id === offerId);
   }
 
   getTotalQty(items: any[]): number {
@@ -291,7 +397,7 @@ export class OffersComponent {
 
   async updateOfferStatus(offer: any, status: string) {
     offer.offerStatus = status;
-    await this.dbService.put('offers', offer);
+    await this.apiService.put('offers', this.toDbRow(offer));
 
     // Sync decision back to linked inquiry
     if (offer.inquiryNo != null) {
@@ -303,12 +409,11 @@ export class OffersComponent {
       };
       const decision = decisionMap[status];
       if (decision) {
-        const allInquiries = await this.dbService.getAll('inquiries');
         const offerInquiryId = this.toInquiryId(offer.inquiryNo);
-        const inq = allInquiries.find((i: any) => this.toInquiryId(i.id) === offerInquiryId);
+        const inq = this.inquiries.find((i: any) => this.toInquiryId(i.id) === offerInquiryId);
         if (inq) {
           inq.decision = decision;
-          await this.dbService.put('inquiries', inq);
+          await this.apiService.put('inquiries', { id: inq._uuid, decision });
         }
       }
     }
@@ -321,7 +426,8 @@ export class OffersComponent {
     this.historyCurrentOffer = offer;
     this.viewingHistoryOffer = null;
     // Collect all versions: walk back via previousVersionId
-    const allOffers: any[] = await this.dbService.getAll('offers');
+    const rows: any[] = await this.apiService.getAll('offers');
+    const allOffers = rows.map((r: any) => this.fromDbRow(r));
     const chain: any[] = [];
     let current: any = offer;
     // Add current
@@ -381,6 +487,18 @@ export class OffersComponent {
     return `NIEC/MDD/${y}/${String(id).padStart(4, '0')}`;
   }
 
+  /** Count active offers to derive the next preview ref for standalone offer letters. */
+  private async generatePreviewOfferId(): Promise<string> {
+    const rows = await this.apiService.getAll('offers');
+    const active = rows.filter((r: any) => r.status !== 'superseded');
+    const maxNum = active.reduce((max: number, r: any) => {
+      const m = (r.offer_ref || '').match(/\/(\d{4})(?:-v\d+)?$/);
+      return m ? Math.max(max, parseInt(m[1], 10)) : max;
+    }, 0);
+    const y = new Date().getFullYear();
+    return `NIEC/MDD/${y}/${String(maxNum + 1).padStart(4, '0')}`;
+  }
+
   createOffer() {
     this.router.navigate(['/create-offer']);
   }
@@ -399,8 +517,8 @@ export class OffersComponent {
     this.selectedOffer = null;
   }
 
-  async deleteOffer(id: number) {
-    await this.dbService.delete('offers', id);
+  async deleteOffer(id: any) {
+    await this.apiService.delete('offers', id);
     await this.loadOffers();
   }
 
@@ -412,7 +530,12 @@ export class OffersComponent {
       let inquiryData: any = null;
       if (this.selectedOffer.inquiryNo) {
         try {
-          inquiryData = await this.dbService.getById('inquiries', this.selectedOffer.inquiryNo);
+          // Look up inquiry by its sequential number stored in inquiry_ref
+          const rows = await this.apiService.getAll('inquiries');
+          inquiryData = rows.find((r: any) => {
+            const m = (r.inquiry_ref || '').match(/INQ-(\d+)/i);
+            return m ? parseInt(m[1], 10) === this.selectedOffer.inquiryNo : false;
+          }) || null;
         } catch (error) {
           console.log('⚠️ Could not load inquiry:', error);
         }
@@ -433,13 +556,14 @@ export class OffersComponent {
 
       if (inquiryData && this.selectedOffer.items && this.selectedOffer.items.length > 0) {
         const firstItem = this.selectedOffer.items[0];
+        const inquiryItems = Array.isArray(inquiryData.items) ? inquiryData.items : [];
 
         if (!this.offerLetter['material'] && firstItem.name) {
           this.offerLetter['material'] = firstItem.name;
         }
 
-        if (inquiryData.items && inquiryData.items.length > 0) {
-          const inquiryItem = inquiryData.items[0];
+        if (inquiryItems.length > 0) {
+          const inquiryItem = inquiryItems[0];
 
           if (!this.offerLetter['density'] && inquiryItem.density) {
             this.offerLetter['density'] = inquiryItem.density;
@@ -456,7 +580,7 @@ export class OffersComponent {
 
         if (!this.offerLetter['quantity']) {
           const totalQty = this.selectedOffer.items.reduce((sum: number, item: any) => sum + (item.qty || 0), 0);
-          const firstItemUOM = inquiryData?.items?.[0]?.uom || 'Units';
+          const firstItemUOM = inquiryItems[0]?.uom || 'Units';
           this.offerLetter['quantity'] = `${totalQty} ${firstItemUOM}`;
         }
 
@@ -503,33 +627,38 @@ export class OffersComponent {
     await this.downloadOfferPDF();
   }
 
-  async getCustomerByName(name: string) {
-    return this.dbService.getCustomerByName(name);
+  /** Fetch customer by company name for PDF address rendering. */
+  async getCustomerByName(name: string): Promise<any | null> {
+    if (!name) return null;
+    try {
+      const rows = await this.apiService.filter('customers', { company_name: name });
+      const row = rows?.[0];
+      if (!row) return null;
+      return {
+        id:              row.id,
+        companyName:     row.company_name     || '',
+        name:            row.name             || '',
+        email:           row.email            || '',
+        mobile:          row.mobile           || '',
+        primaryContact:  row.primary_contact  || {},
+        secondaryContact: row.secondary_contact || {},
+        officeAddress:   row.office_address   || {},
+        billing:         row.billing          || {},
+        shipping:        row.shipping         || {},
+      };
+    } catch {
+      return null;
+    }
   }
 
   async createOfferFollowUpReminder(offer: any) {
-    try {
-      const followUpDate = new Date();
-      followUpDate.setDate(followUpDate.getDate() + 3);
-      followUpDate.setHours(0, 0, 0, 0);
-
-      const reminder = {
-        date: followUpDate.toISOString().slice(0, 10),
-        time: '10:00',
-        type: 'offer',
-        source: 'system',
-        status: 'pending',
-        name: offer.customerName || '',
-        mobile: '',
-        referenceNo: offer.offerRef || this.generateOfferRef(offer.id),
-        note: `Offer follow-up for ${offer.offerRef}`,
-        createdAt: new Date().toISOString()
-      };
-
-      await this.dbService.add('reminders', reminder);
-    } catch (e) {
-      console.error('❌ Failed to create offer reminder', e);
-    }
+    await this.addReminder({
+      type: 'offer-followup',
+      name: offer.customerName || '',
+      referenceNo: offer.offerRef || '',
+      daysFromNow: 2,
+      note: `Follow up on offer ${offer.offerRef}`,
+    });
   }
 
   async downloadOfferPDF() {
@@ -833,47 +962,43 @@ export class OffersComponent {
     const isNewOffer = !this.selectedOffer.id;
 
     Object.assign(this.selectedOffer, {
-      material: this.offerLetter['material'],
-      density: this.offerLetter['density'],
-      thickness: this.offerLetter['thickness'],
-      size: this.offerLetter['size'],
-      quantity: this.offerLetter['quantity'],
-      rate: this.offerLetter['rate'],
-      taxes: this.offerLetter['taxes'],
-      freight: this.offerLetter['freight'],
-      inspection: this.offerLetter['inspection'],
-      packing: this.offerLetter['packing'],
-      loading: this.offerLetter['loading'],
+      material:      this.offerLetter['material'],
+      density:       this.offerLetter['density'],
+      thickness:     this.offerLetter['thickness'],
+      size:          this.offerLetter['size'],
+      quantity:      this.offerLetter['quantity'],
+      rate:          this.offerLetter['rate'],
+      taxes:         this.offerLetter['taxes'],
+      freight:       this.offerLetter['freight'],
+      inspection:    this.offerLetter['inspection'],
+      packing:       this.offerLetter['packing'],
+      loading:       this.offerLetter['loading'],
       deliveryTerms: this.offerLetter['deliveryTerms'],
-      paymentTerms: this.offerLetter['paymentTerms'],
-      validity: this.offerLetter['validity']
+      paymentTerms:  this.offerLetter['paymentTerms'],
+      validity:      this.offerLetter['validity']
     });
 
     if (isNewOffer) {
-      const newId = await this.dbService.add('offers', this.selectedOffer);
+      const previewRef = await this.generatePreviewOfferId();
+      const newId = await this.apiService.add('offers', this.toDbRow({
+        ...this.selectedOffer,
+        offerRef: previewRef,
+        date: new Date().toISOString().slice(0, 10),
+        status: 'active'
+      }));
       this.selectedOffer.id = newId;
-      this.selectedOffer.offerRef = this.generateOfferRef(newId);
-      await this.createOfferReminder(this.selectedOffer);
+      this.selectedOffer.offerRef = previewRef;
+      await this.addReminder({
+        type: 'offer',
+        name: this.selectedOffer.customerName || '',
+        referenceNo: previewRef,
+        daysFromNow: 2,
+        note: `Follow up on offer ${previewRef}`,
+      });
     } else {
-      await this.dbService.put('offers', this.selectedOffer);
+      await this.apiService.put('offers', this.toDbRow(this.selectedOffer));
     }
     await this.loadOffers();
-  }
-
-  async createOfferReminder(offer: any) {
-    const reminder = {
-      date: this.getFollowUpDate(2),
-      time: '10:00',
-      type: 'offer',
-      name: offer.customerName || '',
-      mobile: '',
-      referenceNo: offer.offerRef || '',
-      note: `Follow up for offer ${offer.offerRef}`,
-      source: 'system',
-      status: 'pending',
-      createdAt: new Date().toISOString()
-    };
-    await this.dbService.add('reminders', reminder);
   }
 
   getFollowUpDate(days: number = 2): string {
@@ -883,9 +1008,9 @@ export class OffersComponent {
   }
 
   /* ── Row expansion ─────────────────────────────────────── */
-  expandedOfferId: number | null = null;
+  expandedOfferId: string | null = null;
 
-  toggleExpand(offerId: number) {
+  toggleExpand(offerId: string) {
     this.expandedOfferId = this.expandedOfferId === offerId ? null : offerId;
   }
 
@@ -903,7 +1028,7 @@ export class OffersComponent {
   }
 
   async saveFollowUps(offer: any) {
-    await this.dbService.put('offers', offer);
+    await this.apiService.put('offers', this.toDbRow(offer));
   }
 
   removeFollowUp(offer: any, idx: number) {
@@ -913,7 +1038,7 @@ export class OffersComponent {
   /* ── C29/C30: Order Received checkboxes & PI ─────────── */
   async updateOfferField(offer: any, field: string, value: any) {
     (offer as any)[field] = value;
-    await this.dbService.put('offers', offer);
+    await this.apiService.put('offers', this.toDbRow(offer));
   }
 
   generatePIFromOffer(offer: any) {
@@ -930,7 +1055,7 @@ export class OffersComponent {
   }
 
   async savePaymentDetails(offer: any) {
-    await this.dbService.put('offers', offer);
+    await this.apiService.put('offers', this.toDbRow(offer));
   }
 
   /* ── C36: Order Lost reasons table ───────────────────── */
@@ -944,12 +1069,12 @@ export class OffersComponent {
   }
 
   async saveLostDetails(offer: any) {
-    await this.dbService.put('offers', offer);
+    await this.apiService.put('offers', this.toDbRow(offer));
   }
 
   /* ── C37: Regret remarks ──────────────────────────────── */
   async saveRegretRemarks(offer: any) {
-    await this.dbService.put('offers', offer);
+    await this.apiService.put('offers', this.toDbRow(offer));
   }
 
   /* ── C15: Acknowledgement — Send to Customer ─────────── */
@@ -974,7 +1099,7 @@ export class OffersComponent {
     const reader = new FileReader();
     reader.onload = async (e: any) => {
       offer.poCopyAttachments.push({ name: file.name, type: file.type, data: e.target.result });
-      await this.dbService.put('offers', offer);
+      await this.apiService.put('offers', this.toDbRow(offer));
     };
     reader.readAsDataURL(file);
     input.value = '';
@@ -982,7 +1107,7 @@ export class OffersComponent {
 
   async removePoCopyAttachment(offer: any, idx: number) {
     offer.poCopyAttachments.splice(idx, 1);
-    await this.dbService.put('offers', offer);
+    await this.apiService.put('offers', this.toDbRow(offer));
   }
 
   /* ── C21: Send offer via email ────────────────────────── */
@@ -1023,7 +1148,7 @@ export class OffersComponent {
 
     if (this.selectedOffer) {
       this.selectedOffer.sentAt = new Date().toISOString();
-      await this.dbService.put('offers', this.selectedOffer);
+      await this.apiService.put('offers', this.toDbRow(this.selectedOffer));
       await this.loadOffers();
     }
     this.closeEmailModal();
@@ -1037,4 +1162,24 @@ export class OffersComponent {
   /* ── C34: Send Sales Order via email ─────────────────── */
   showSoEmailDropdown = false;
   soEmailPresets = ['ak@navbharatgroup.com', 'rs@navbharatgroup.com'];
+
+  private async addReminder(opts: {
+    type: string; name: string; referenceNo: string; daysFromNow: number; note: string;
+  }): Promise<void> {
+    try {
+      const date = new Date();
+      date.setDate(date.getDate() + opts.daysFromNow);
+      await this.apiService.add('reminders', {
+        date:         date.toISOString().slice(0, 10),
+        time:         '10:00',
+        type:         opts.type,
+        name:         opts.name,
+        mobile:       '',
+        reference_no: opts.referenceNo,
+        note:         opts.note,
+        source:       'system',
+        status:       'pending',
+      });
+    } catch { /* reminder creation is non-critical */ }
+  }
 }

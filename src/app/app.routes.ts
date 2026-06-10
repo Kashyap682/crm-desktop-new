@@ -4,14 +4,22 @@ import { InventoryComponent } from './pages/inventory/inventory.component';
 import { Routes } from '@angular/router';
 import { SalesOrderComponent } from './pages/sales-order/sales-order.component';
 import { PurchaseOrderComponent } from './pages/purchase-order/purchase-order.component';
+import { authGuard } from './guards/auth.guard';
+import { adminGuard } from './guards/admin.guard';
 
 
 export const routes: Routes = [
-  
-  
+
+  {
+    path: 'login',
+    loadComponent: () =>
+      import('./pages/login/login.component').then(m => m.LoginComponent)
+  },
+
   {
     path: '',
     component: LayoutComponent,
+    canActivate: [authGuard],
     children: [
       { path: '', redirectTo: 'dashboard', pathMatch: 'full' },
 
@@ -96,7 +104,15 @@ export const routes: Routes = [
       {
         path: 'database',
         loadComponent: () => import('./pages/database/database.component').then(m => m.DatabaseComponent)
+      },
+
+      {
+        path: 'users',
+        loadComponent: () => import('./pages/user-management/user-management.component').then(m => m.UserManagementComponent),
+        canActivate: [adminGuard]
       }
     ]
-  }
+  },
+
+  { path: '**', redirectTo: '' }
 ];
