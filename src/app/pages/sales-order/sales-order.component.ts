@@ -1,6 +1,7 @@
 import { Component, OnInit, AfterViewInit, ChangeDetectorRef } from '@angular/core';
 import { Router } from '@angular/router';
 import { ApiService } from '../../service/api.service';
+import { ToastService } from '../../service/toast.service';
 import { FormsModule } from '@angular/forms';
 import { CommonModule } from '@angular/common';
 import jsPDF from 'jspdf';
@@ -89,7 +90,8 @@ export class SalesOrderComponent implements OnInit, AfterViewInit {
   constructor(
     private router: Router,
     private apiService: ApiService,
-    private cdr: ChangeDetectorRef
+    private cdr: ChangeDetectorRef,
+    private toastService: ToastService
   ) { }
 
   // ── Mapping helpers ──────────────────────────────────────
@@ -507,7 +509,7 @@ export class SalesOrderComponent implements OnInit, AfterViewInit {
         await this.loadOffersForCompany(selectedCompanyName);
 
       } else {
-        alert(`Customer "${selectedCompanyName}" not found in database`);
+        this.toastService.warning(`Customer "${selectedCompanyName}" not found in database`);
         this.resetCompanyFields();
       }
     } catch (error) {
@@ -665,11 +667,11 @@ export class SalesOrderComponent implements OnInit, AfterViewInit {
   async onSave() {
     try {
       if (!this.salesOrderNo || !this.customerName) {
-        alert('❌ Order No and Customer Name are required');
+        this.toastService.warning('Order No and Customer Name are required');
         return;
       }
       if (this.itemsShow.length === 0) {
-        alert('❌ Add at least one line item');
+        this.toastService.warning('Add at least one line item');
         return;
       }
 
@@ -681,10 +683,10 @@ export class SalesOrderComponent implements OnInit, AfterViewInit {
           id: this.editingOrder.id,
           updatedAt: new Date().toISOString()
         }));
-        alert('✅ Sales Order updated successfully!');
+        this.toastService.success('Sales Order updated');
       } else {
         await this.apiService.add('salesOrders', this.toDbRow(salesOrder));
-        alert('✅ Sales Order saved successfully!');
+        this.toastService.success('Sales Order saved');
       }
 
       await this.addReminder({
@@ -702,7 +704,7 @@ export class SalesOrderComponent implements OnInit, AfterViewInit {
 
     } catch (error) {
       console.error('❌ Failed to save Sales Order:', error);
-      alert('❌ Failed to save Sales Order.');
+      this.toastService.error('Failed to save Sales Order');
     }
   }
 
@@ -753,17 +755,17 @@ export class SalesOrderComponent implements OnInit, AfterViewInit {
 
   async saveDraft() {
     await this.upsertSalesOrder('DRAFT');
-    alert('Sales Order saved as Draft');
+    this.toastService.success('Sales Order saved as Draft');
   }
 
   async submitOrder() {
     await this.upsertSalesOrder('SUBMITTED');
-    alert('Sales Order submitted successfully');
+    this.toastService.success('Sales Order submitted');
   }
 
   async approveOrder() {
     await this.upsertSalesOrder('APPROVED');
-    alert('Sales Order approved');
+    this.toastService.success('Sales Order approved');
   }
 
   // ===== TABLE ACTIONS =====
@@ -802,11 +804,11 @@ export class SalesOrderComponent implements OnInit, AfterViewInit {
   async approveFromTable(order: any) {
     try {
       await this.apiService.put('salesOrders', this.toDbRow({ ...order, status: 'APPROVED' }));
-      alert('✅ Sales Order approved');
       await this.loadSalesOrders();
+      this.toastService.success('Sales Order approved');
     } catch (error) {
       console.error('❌ Failed to approve Sales Order:', error);
-      alert('❌ Failed to approve Sales Order');
+      this.toastService.error('Failed to approve Sales Order');
     }
   }
 
@@ -814,11 +816,11 @@ export class SalesOrderComponent implements OnInit, AfterViewInit {
     if (!confirm(`Delete Sales Order ${order.orderNo}?`)) return;
     try {
       await this.apiService.delete('salesOrders', order.id);
-      alert('✅ Sales Order deleted successfully');
       await this.loadSalesOrders();
+      this.toastService.success('Sales Order deleted');
     } catch (error) {
       console.error('❌ Failed to delete Sales Order:', error);
-      alert('❌ Failed to delete Sales Order');
+      this.toastService.error('Failed to delete Sales Order');
     }
   }
 
@@ -1164,7 +1166,7 @@ export class SalesOrderComponent implements OnInit, AfterViewInit {
       doc.text(`Approved By: ${safe(g.approvedBy)}`, margin, y);
       doc.save(`MIR_${safe(g.reportNo) || 'Report'}.pdf`);
       this.closeMIRModal();
-    } catch (error) { console.error('Error generating MIR:', error); alert('Error generating MIR report'); }
+    } catch (error) { console.error('Error generating MIR:', error); this.toastService.error('Error generating MIR report'); }
   }
 
   private loadLogoAsBase64(path: string): Promise<string> {

@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { jsPDF } from 'jspdf';
 import { ApiService } from '../../service/api.service';
 import { Router } from '@angular/router';
+import { ToastService } from '../../service/toast.service';
 
 interface Reminder {
   name: string;
@@ -47,7 +48,7 @@ export class RemindersComponent implements OnInit, OnDestroy {
 
   private dbChangeHandler: any;
 
-  constructor(private apiService: ApiService, private router: Router) { }
+  constructor(private apiService: ApiService, private router: Router, private toastService: ToastService) { }
 
   // ── Mapping helpers ──────────────────────────────────────
 
@@ -191,7 +192,7 @@ export class RemindersComponent implements OnInit, OnDestroy {
 
   async saveReminder() {
     if (!this.form.name || !this.form.time || !this.form.type) {
-      alert('Name, Time and Reminder Type are required');
+      this.toastService.warning('Name, Time and Reminder Type are required');
       return;
     }
     const reminder = {
@@ -205,14 +206,15 @@ export class RemindersComponent implements OnInit, OnDestroy {
       await this.apiService.add('reminders', this.toDbRow(reminder));
       await this.loadUserReminders();
       this.closeAddModal();
+      this.toastService.success('Reminder saved');
     } catch (error) {
       console.error('❌ Failed to save reminder:', error);
-      alert('❌ Failed to save reminder');
+      this.toastService.error('Failed to save reminder');
     }
   }
 
   generateUserReminderReport() {
-    if (this.filteredReminders.length === 0) { alert('No reminders for the selected date.'); return; }
+    if (this.filteredReminders.length === 0) { this.toastService.info('No reminders for the selected date'); return; }
     const doc = new jsPDF();
     doc.text('Reminders Report', 105, 15, { align: 'center' });
     doc.text(`Date: ${this.selectedDate}`, 14, 30);
@@ -222,7 +224,7 @@ export class RemindersComponent implements OnInit, OnDestroy {
   }
 
   emailUserReminders() {
-    if (this.filteredReminders.length === 0) { alert('No reminders to email for selected date.'); return; }
+    if (this.filteredReminders.length === 0) { this.toastService.info('No reminders to email for the selected date'); return; }
     let content = `Your reminders for ${this.selectedDate}:\n\n`;
     this.filteredReminders.forEach((r, i) => { content += `${i + 1}. ${r.name} at ${r.time}\n`; });
     const subject = encodeURIComponent(`Reminders for ${this.selectedDate}`);

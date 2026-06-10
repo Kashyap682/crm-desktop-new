@@ -14,6 +14,7 @@ import {
   createEmptyInvoiceItem
 } from '../../models/invoice.model';
 import { ApiService } from '../../service/api.service';
+import { ToastService } from '../../service/toast.service';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import html2canvas from 'html2canvas';
@@ -51,7 +52,7 @@ export class InvoicesComponent implements OnInit {
   taxRates: TaxRates = DEFAULT_TAX_RATES;
   invoiceForm: InvoiceModel = this.createEmptyInvoice();
 
-  constructor(private apiService: ApiService) { }
+  constructor(private apiService: ApiService, private toastService: ToastService) { }
 
   // ── Mapping helpers ──────────────────────────────────────
 
@@ -286,7 +287,8 @@ export class InvoicesComponent implements OnInit {
     }
 
     if (deductedCount > 0 || notFoundCount > 0) {
-      alert(`Inventory Update Summary:\n\n✓ Successfully deducted: ${deductedCount} items\n✗ Not found in inventory: ${notFoundCount} items\n\nDetails:\n${deductionLog.join('\n')}`);
+      const msg = `Inventory deducted: ${deductedCount} item(s)` + (notFoundCount > 0 ? `, ${notFoundCount} not found` : '');
+      notFoundCount > 0 ? this.toastService.warning(msg) : this.toastService.success(msg);
     }
     await this.loadInventoryItems();
   }
@@ -561,13 +563,15 @@ export class InvoicesComponent implements OnInit {
         await this.apiService.add('invoices', this.toDbRow(inv));
       }
 
+      const wasEditing = this.isEditing;
       this.showInvoiceModal = false;
       this.isEditing = false;
       this.editingId = null;
       await this.loadInvoices();
+      this.toastService.success(wasEditing ? 'Invoice updated' : 'Invoice saved');
     } catch (error) {
       console.error('❌ Failed to save invoice:', error);
-      alert('❌ Failed to save invoice');
+      this.toastService.error('Failed to save invoice');
     }
   }
 
@@ -618,15 +622,16 @@ export class InvoicesComponent implements OnInit {
   async deleteInvoice(inv: InvoiceModel) {
     const label = inv.invoiceNo || inv.id || 'this invoice';
     if (!confirm(`Delete ${label}?\n\nNote: Inventory quantities will be restored.`)) return;
-    if (!inv.id) { alert('This invoice cannot be deleted (missing ID).'); return; }
+    if (!inv.id) { this.toastService.error('Cannot delete invoice — missing ID'); return; }
 
     if (inv.items && inv.items.length > 0) await this.restoreInventory(inv.items);
     try {
       await this.apiService.delete('invoices', inv.id);
       await this.loadInvoices();
+      this.toastService.success('Invoice deleted');
     } catch (error) {
       console.error('❌ Failed to delete invoice:', error);
-      alert('❌ Failed to delete invoice');
+      this.toastService.error('Failed to delete invoice');
     }
   }
 
@@ -670,7 +675,7 @@ export class InvoicesComponent implements OnInit {
     try {
       await new Promise(resolve => setTimeout(resolve, 500));
       const el = document.getElementById('tax-invoice-area');
-      if (!el) { alert('Error: Invoice template not found. Please try again.'); return; }
+      if (!el) { this.toastService.error('Invoice template not found — please try again'); return; }
 
       const canvas = await html2canvas(el, { scale: 2, useCORS: true, allowTaint: false, logging: false, backgroundColor: '#ffffff' });
       const pdf = new jsPDF('p', 'mm', 'a4');
@@ -680,7 +685,7 @@ export class InvoicesComponent implements OnInit {
       pdf.save(`${inv.invoiceNo || 'Invoice'}.pdf`);
     } catch (error) {
       console.error('❌ Error generating PDF:', error);
-      alert('Error generating PDF. Please check the console for details.');
+      this.toastService.error('Error generating PDF');
     } finally {
       this.selectedInvoiceForPrint = null;
     }
@@ -763,7 +768,7 @@ export class InvoicesComponent implements OnInit {
       this.closeGRRModal();
     } catch (error) {
       console.error('❌ Error generating GRR:', error);
-      alert('Error generating GRR report');
+      this.toastService.error('Error generating GRR report');
     }
   }
 
@@ -837,7 +842,7 @@ export class InvoicesComponent implements OnInit {
       this.closeMIRModal();
     } catch (error) {
       console.error('❌ Error generating MIR:', error);
-      alert('Error generating MIR report');
+      this.toastService.error('Error generating MIR report');
     }
   }
 }

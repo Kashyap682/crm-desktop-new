@@ -2,6 +2,7 @@ import { Component, OnInit, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../service/api.service';
+import { ToastService } from '../../service/toast.service';
 
 type OrderStatus = 'offers' | 'ongoing' | 'completed';
 
@@ -57,7 +58,7 @@ export class OrdersComponent implements OnInit {
   inquiriesList: any[] = [];
   inventoryList: any[] = [];
 
-  constructor(private apiService: ApiService) { }
+  constructor(private apiService: ApiService, private toastService: ToastService) { }
 
   // Action Menu Helpers
   activeMenuId: any = null;
@@ -262,7 +263,7 @@ export class OrdersComponent implements OnInit {
   /* -------- SUBMIT FORM -------- */
   async submitForm() {
     if (!this.orderForm.customerName || this.orderForm.items.length === 0) {
-      alert('Please enter customer and at least one item.');
+      this.toastService.warning('Please enter customer and at least one item');
       return;
     }
 
@@ -302,9 +303,10 @@ export class OrdersComponent implements OnInit {
       }
       this.showModal = false;
       await this.loadOrders();
+      this.toastService.success(this.isEditing ? 'Order updated' : 'Order saved');
     } catch (err) {
       console.error('❌ Failed to save order:', err);
-      alert('Failed to save order');
+      this.toastService.error('Failed to save order');
     }
   }
 

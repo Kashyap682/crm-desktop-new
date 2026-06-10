@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../service/api.service';
 import { AuthService } from '../../service/auth.service';
+import { ToastService } from '../../service/toast.service';
 
 interface OrgUser {
   id: string;
@@ -39,7 +40,8 @@ export class UserManagementComponent implements OnInit {
 
   constructor(
     private apiService: ApiService,
-    private authService: AuthService
+    private authService: AuthService,
+    private toastService: ToastService
   ) {}
 
   ngOnInit() {
@@ -108,7 +110,7 @@ export class UserManagementComponent implements OnInit {
 
   async changeRole(user: OrgUser, newRole: string) {
     if (user.id === this.currentUserId) {
-      alert("You can't change your own role.");
+      this.toastService.warning("You can't change your own role");
       return;
     }
     this.roleUpdating = user.id;
@@ -125,7 +127,7 @@ export class UserManagementComponent implements OnInit {
 
   async toggleActive(user: OrgUser) {
     if (user.id === this.currentUserId) {
-      alert("You can't deactivate your own account.");
+      this.toastService.warning("You can't deactivate your own account");
       return;
     }
     const action = user.isActive ? 'deactivate' : 'activate';
@@ -144,11 +146,10 @@ export class UserManagementComponent implements OnInit {
   async resetPassword(user: OrgUser) {
     const newPass = prompt(`Set new password for ${user.email}:\n(minimum 8 characters)`);
     if (!newPass) return;
-    if (newPass.length < 8) { alert('Password must be at least 8 characters.'); return; }
+    if (newPass.length < 8) { this.toastService.warning('Password must be at least 8 characters'); return; }
 
-    // Re-register to change password isn't possible directly via PostgREST
-    // (password_hash must be bcrypt'd). For now, show a note to use auth backend directly.
-    alert('Password reset requires direct backend access.\nUse the auth API: POST /auth/reset-password (admin endpoint — to be implemented).');
+    // Password reset requires bcrypt hashing — must go through the auth service, not PostgREST directly.
+    this.toastService.info('Password reset not yet implemented — use the auth backend directly');
   }
 
   formatDate(iso: string): string {

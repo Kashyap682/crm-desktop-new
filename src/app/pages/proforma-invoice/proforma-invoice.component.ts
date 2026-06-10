@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { ApiService } from '../../service/api.service';
+import { ToastService } from '../../service/toast.service';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 
@@ -61,7 +62,7 @@ export class ProformaInvoiceComponent implements OnInit {
   };
   loading: boolean | undefined;
 
-  constructor(private apiService: ApiService, private router: Router) { }
+  constructor(private apiService: ApiService, private router: Router, private toastService: ToastService) { }
 
   // ── Mapping helpers ──────────────────────────────────────
 
@@ -436,10 +437,10 @@ export class ProformaInvoiceComponent implements OnInit {
       this.shipToName = ''; this.shipToAddress = ''; this.shipToGST = ''; this.shipToPAN = '';
       this.selectedCompany = '';
       this.onBankChange();
-      alert('Proforma saved successfully!');
+      this.toastService.success('Proforma saved');
     } catch (error) {
       console.error('❌ Failed to save proforma:', error);
-      alert('❌ Failed to save Proforma Invoice');
+      this.toastService.error('Failed to save Proforma Invoice');
     }
   }
 
@@ -486,9 +487,10 @@ export class ProformaInvoiceComponent implements OnInit {
     try {
       await this.apiService.delete('proformas', p.id);
       this.proformas = this.proformas.filter(x => x.id !== p.id);
+      this.toastService.success('Proforma deleted');
     } catch (error) {
       console.error('❌ Failed to delete proforma:', error);
-      alert('❌ Failed to delete Proforma');
+      this.toastService.error('Failed to delete Proforma');
     }
   }
 
@@ -582,10 +584,11 @@ export class ProformaInvoiceComponent implements OnInit {
         status:         'Pending',
       });
 
+      this.toastService.success('Invoice created — redirecting');
       this.router.navigate(['/invoices']);
     } catch (err) {
       console.error('Failed to convert proforma to invoice:', err);
-      alert('Failed to create invoice. Please try again.');
+      this.toastService.error('Failed to create invoice — please try again');
     }
   }
 
@@ -599,7 +602,7 @@ export class ProformaInvoiceComponent implements OnInit {
       await new Promise(r => setTimeout(r, 200));
 
       const DATA = document.querySelector('#invoice-area') as HTMLElement;
-      if (!DATA) { alert('Invoice area not found'); return; }
+      if (!DATA) { this.toastService.error('Invoice area not found'); return; }
 
       const canvas = await html2canvas(DATA, {
         scale: 3, useCORS: true, allowTaint: true, backgroundColor: '#ffffff',
@@ -626,7 +629,7 @@ export class ProformaInvoiceComponent implements OnInit {
       pdf.save(`${this.form.proformaNumber || 'Proforma'}.pdf`);
     } catch (err) {
       console.error('PDF Error', err);
-      alert('PDF Error. See console.');
+      this.toastService.error('Failed to generate PDF');
     } finally {
       this.loading = false;
       this.isPrintMode = false;

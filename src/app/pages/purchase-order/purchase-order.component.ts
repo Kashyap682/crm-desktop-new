@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { ApiService } from '../../service/api.service';
+import { ToastService } from '../../service/toast.service';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -206,7 +207,8 @@ export class PurchaseOrderComponent implements OnInit {
 
   constructor(
     private router: Router,
-    private apiService: ApiService
+    private apiService: ApiService,
+    private toastService: ToastService
   ) { }
 
   async ngOnInit() {
@@ -465,7 +467,7 @@ export class PurchaseOrderComponent implements OnInit {
       this.closeGRRModal();
     } catch (error) {
       console.error('❌ Error generating GRR:', error);
-      alert('Error generating GRR report');
+      this.toastService.error('Error generating GRR report');
     }
   }
 
@@ -773,10 +775,10 @@ export class PurchaseOrderComponent implements OnInit {
       await this.apiService.put('purchaseOrders', this.toDbRow(payload));
       await this.loadPurchaseOrders();
       this.editingPO = null;
-      alert('Purchase Order saved as Draft');
+      this.toastService.success('Purchase Order saved as Draft');
     } catch (error) {
       console.error('❌ Failed to save draft:', error);
-      alert('❌ Failed to save Purchase Order');
+      this.toastService.error('Failed to save Purchase Order');
     }
   }
 
@@ -788,10 +790,10 @@ export class PurchaseOrderComponent implements OnInit {
       await this.apiService.put('purchaseOrders', this.toDbRow(payload));
       await this.loadPurchaseOrders();
       this.editingPO = null;
-      alert('Purchase Order submitted');
+      this.toastService.success('Purchase Order submitted');
     } catch (error) {
       console.error('❌ Failed to submit PO:', error);
-      alert('❌ Failed to submit Purchase Order');
+      this.toastService.error('Failed to submit Purchase Order');
     }
   }
 
@@ -803,10 +805,10 @@ export class PurchaseOrderComponent implements OnInit {
       await this.apiService.put('purchaseOrders', this.toDbRow(payload));
       await this.loadPurchaseOrders();
       this.editingPO = null;
-      alert('Purchase Order approved');
+      this.toastService.success('Purchase Order approved');
     } catch (error) {
       console.error('❌ Failed to approve PO:', error);
-      alert('❌ Failed to approve Purchase Order');
+      this.toastService.error('Failed to approve Purchase Order');
     }
   }
 
@@ -814,10 +816,10 @@ export class PurchaseOrderComponent implements OnInit {
     try {
       await this.apiService.put('purchaseOrders', this.toDbRow({ ...po, status: 'APPROVED' }));
       await this.loadPurchaseOrders();
-      alert('Purchase Order approved');
+      this.toastService.success('Purchase Order approved');
     } catch (error) {
       console.error('❌ Failed to approve PO:', error);
-      alert('❌ Failed to approve Purchase Order');
+      this.toastService.error('Failed to approve Purchase Order');
     }
   }
 
@@ -825,10 +827,10 @@ export class PurchaseOrderComponent implements OnInit {
     try {
       await this.apiService.put('purchaseOrders', this.toDbRow({ ...po, status: 'SUBMITTED' }));
       await this.loadPurchaseOrders();
-      alert('Purchase Order saved');
+      this.toastService.success('Purchase Order saved');
     } catch (error) {
       console.error('❌ Failed to save PO:', error);
-      alert('❌ Failed to save Purchase Order');
+      this.toastService.error('Failed to save Purchase Order');
     }
   }
 
@@ -843,9 +845,10 @@ export class PurchaseOrderComponent implements OnInit {
     try {
       await this.apiService.delete('purchaseOrders', po.id);
       await this.loadPurchaseOrders();
+      this.toastService.success('Purchase Order deleted');
     } catch (error) {
       console.error('❌ Failed to delete PO:', error);
-      alert('❌ Failed to delete Purchase Order');
+      this.toastService.error('Failed to delete Purchase Order');
     }
   }
 

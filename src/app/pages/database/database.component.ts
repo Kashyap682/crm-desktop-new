@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { ApiService } from '../../service/api.service';
+import { ToastService } from '../../service/toast.service';
 
 @Component({
   selector: 'app-database',
@@ -32,7 +33,7 @@ export class DatabaseComponent implements OnInit {
   previewDoc: any = null;
   previewSafeUrl: SafeResourceUrl | null = null;
 
-  constructor(private apiService: ApiService, private sanitizer: DomSanitizer) { }
+  constructor(private apiService: ApiService, private sanitizer: DomSanitizer, private toastService: ToastService) { }
 
   // ── Mapping helpers ──────────────────────────────────────
 
@@ -185,9 +186,10 @@ export class DatabaseComponent implements OnInit {
     try {
       await this.apiService.delete('documents', id);
       await this.loadDocuments();
+      this.toastService.success('Document deleted');
     } catch (error) {
       console.error('❌ Failed to delete document:', error);
-      alert('❌ Failed to delete document');
+      this.toastService.error('Failed to delete document');
     }
   }
 

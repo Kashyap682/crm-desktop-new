@@ -2,6 +2,7 @@ import { Component, OnInit, HostListener, DoCheck } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../service/api.service';
+import { ToastService } from '../../service/toast.service';
 import { jsPDF } from 'jspdf';
 
 interface Payment {
@@ -56,7 +57,7 @@ export class PaymentsComponent implements OnInit, DoCheck {
 
   newPayment: Payment = this.getEmptyPayment();
 
-  constructor(private apiService: ApiService) { }
+  constructor(private apiService: ApiService, private toastService: ToastService) { }
 
   activeMenuId: any = null;
 
@@ -250,7 +251,7 @@ export class PaymentsComponent implements OnInit, DoCheck {
   ============================= */
   async savePayment() {
     if (this.newPayment.amount > this.newPayment.outstandingBefore) {
-      alert('Payment cannot exceed outstanding amount');
+      this.toastService.warning('Payment cannot exceed outstanding amount');
       return;
     }
 
@@ -275,9 +276,10 @@ export class PaymentsComponent implements OnInit, DoCheck {
 
       this.toggleForm();
       await this.loadPayments();
+      this.toastService.success('Payment saved');
     } catch (error) {
       console.error('❌ Failed to save payment:', error);
-      alert('❌ Failed to save payment');
+      this.toastService.error('Failed to save payment');
     }
   }
 
@@ -337,7 +339,7 @@ export class PaymentsComponent implements OnInit, DoCheck {
 
   async deletePayment(payment: Payment, index: number) {
     if (payment.status === 'Success') {
-      alert('Successful payments cannot be deleted.');
+      this.toastService.warning('Successful payments cannot be deleted');
       return;
     }
     if (!confirm(`Are you sure you want to delete payment ${payment.paymentId}?`)) return;

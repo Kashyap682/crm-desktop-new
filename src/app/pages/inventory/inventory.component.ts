@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import * as XLSX from 'xlsx';
 import { ApiService } from '../../service/api.service';
+import { ToastService } from '../../service/toast.service';
 
 @Component({
   selector: 'app-inventory',
@@ -31,7 +32,7 @@ export class InventoryComponent implements OnInit {
   activeMenuId: any = null;
   menuPosition: { top: string; left: string } = { top: '0px', left: '0px' };
 
-  constructor(private apiService: ApiService) { }
+  constructor(private apiService: ApiService, private toastService: ToastService) { }
 
   toggleActionMenu(event: Event, item: any) {
     event.stopPropagation();
@@ -178,7 +179,7 @@ export class InventoryComponent implements OnInit {
 
   async submitForm() {
     if (!this.form.location || !this.form.displayName || !this.form.unit) {
-      alert('Please fill all required fields: Location, Product/Material, and UOM');
+      this.toastService.warning('Please fill required fields: Location, Product/Material and UOM');
       return;
     }
 
@@ -215,7 +216,7 @@ export class InventoryComponent implements OnInit {
           numberOfUnits: Number(existingProduct.numberOfUnits ?? 0) + Number(this.form.numberOfUnits ?? 0)
         });
 
-        alert(`Updated stock for "${existingProduct.displayName || existingProduct.name} (${existingProduct.size})". New quantity: ${updatedQty}`);
+        this.toastService.success(`Stock updated — "${existingProduct.displayName || existingProduct.name}" new qty: ${updatedQty}`);
       } else {
         if (!this.form.productId) {
           this.form.productId = await this.generateNextProductIdByGroup(this.form.group);
@@ -235,13 +236,14 @@ export class InventoryComponent implements OnInit {
           numberOfUnits: Number(this.form.numberOfUnits ?? 0),
           weight: Number(this.form.weight ?? 0)
         });
+        this.toastService.success(this.isEditing ? `"${formName}" updated` : `"${formName}" added to inventory`);
       }
 
       await this.loadItems();
       this.showModal = false;
     } catch (error) {
       console.error('Error saving inventory:', error);
-      alert('Failed to save inventory item. Please try again.');
+      this.toastService.error('Failed to save inventory item');
     }
   }
 
@@ -273,10 +275,11 @@ export class InventoryComponent implements OnInit {
       try {
         await this.apiService.delete('inventory', item.name);
         await this.loadItems();
+        this.toastService.success(`"${displayName}" deleted`);
         this.closeActionMenu();
       } catch (error) {
         console.error('❌ Error deleting item:', error);
-        alert('Failed to delete item. Please try again.');
+        this.toastService.error('Failed to delete item');
       }
     }
   }
@@ -394,10 +397,10 @@ export class InventoryComponent implements OnInit {
         }
 
         await this.loadItems();
-        alert(`Excel imported successfully!\n\nNew products: ${newCount}\nUpdated products: ${updatedCount}`);
+        this.toastService.success(`Excel imported — ${newCount} new, ${updatedCount} updated`);
       } catch (error) {
         console.error('❌ Error importing Excel:', error);
-        alert('Failed to import Excel file. Please check the format and try again.');
+        this.toastService.error('Failed to import Excel — check the file format');
       }
     };
     reader.readAsArrayBuffer(file);
@@ -465,7 +468,7 @@ export class InventoryComponent implements OnInit {
 
   viewAttachment(it: any) {
     if (!it.attachment) {
-      alert('No attachment available');
+      this.toastService.info('No attachment available');
       return;
     }
 
