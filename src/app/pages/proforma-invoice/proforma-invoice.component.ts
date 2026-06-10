@@ -1,6 +1,7 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { Router } from '@angular/router';
 import { ApiService } from '../../service/api.service';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
@@ -60,7 +61,7 @@ export class ProformaInvoiceComponent implements OnInit {
   };
   loading: boolean | undefined;
 
-  constructor(private apiService: ApiService) { }
+  constructor(private apiService: ApiService, private router: Router) { }
 
   // ── Mapping helpers ──────────────────────────────────────
 
@@ -502,8 +503,90 @@ export class ProformaInvoiceComponent implements OnInit {
   }
 
   async convertToInvoice(p: any) {
-    // TODO: migrate invoices module first, then implement convertToInvoice
-    alert('Convert to Invoice (will be available after invoices migration)');
+    if (!confirm(`Convert ${p.proformaNumber} to a Tax Invoice?`)) return;
+
+    try {
+      // Compute next sequential invoice number
+      const existingRows = await this.apiService.getAll('invoices').catch(() => []);
+      const year = new Date().getFullYear();
+      const maxSeq = existingRows.reduce((max: number, row: any) => {
+        const parts = (row.invoice_no || '').split('/');
+        const n = parseInt(parts[2] || '0', 10);
+        return isNaN(n) ? max : Math.max(max, n);
+      }, 0);
+      const invoiceNo = `INV/${year}/${String(maxSeq + 1).padStart(5, '0')}`;
+
+      const today = new Date().toISOString().slice(0, 10);
+      const supplyType = p.gstType === 'igst' ? 'IGST' : 'GST';
+
+      const subTotal1 = Number(p.subTotal) || 0;
+      const cgst = supplyType === 'GST' ? Number(p.cgst) || 0 : 0;
+      const sgst = supplyType === 'GST' ? Number(p.sgst) || 0 : 0;
+      const igst = supplyType === 'IGST' ? Number(p.igst) || 0 : 0;
+      const otherCharges = Number(p.otherCharges) || 0;
+      const roundOff = Number(p.roundOff) || 0;
+      const grandTotal = Number(p.total) || 0;
+      const subTotal2 = subTotal1 + cgst + sgst + igst + otherCharges;
+
+      const items = (p.items || []).map((it: any, idx: number) => ({
+        srNo:        idx + 1,
+        particulars: it.name || it.productName || '',
+        hsn:         it.hsn  || '',
+        uom:         it.uom  || '',
+        qty:         Number(it.qty)    || 1,
+        rate:        Number(it.rate)   || 0,
+        amount:      Number(it.amount) || 0,
+      }));
+
+      const emptyParty = { name: '', address: '', gstin: '', pan: '', state: '', supplyStateCode: '', placeOfSupply: '' };
+
+      await this.apiService.add('invoices', {
+        invoice_no:        invoiceNo,
+        invoice_date:      today,
+        due_date:          today,
+        order_ref_no:      p.refNo            || '',
+        internal_ref_no:   p.proformaNumber   || '',
+        eway_bill_no:      '',
+        supply_type:       supplyType,
+        supply_state_code: '',
+        place_of_supply:   '',
+        bill_to: {
+          ...emptyParty,
+          name:    p.buyerName    || '',
+          address: p.buyerAddress || '',
+          gstin:   p.buyerGST    || '',
+          pan:     p.buyerPAN    || '',
+        },
+        ship_to: {
+          ...emptyParty,
+          name:    p.shipToName    || p.buyerName    || '',
+          address: p.shipToAddress || p.buyerAddress || '',
+          gstin:   p.shipToGST    || p.buyerGST    || '',
+          pan:     p.shipToPAN    || p.buyerPAN    || '',
+        },
+        items,
+        sub_total_1:     subTotal1,
+        packing_charges: 0,
+        freight_charges: 0,
+        other_charges:   otherCharges,
+        cgst,
+        sgst,
+        igst,
+        sub_total_2:    subTotal2,
+        round_off:      roundOff,
+        grand_total:    grandTotal,
+        amount_in_words: '',
+        transport:      { mode: '', name: '', vehicleNo: '', lrNo: '', remarks: '' },
+        payment_terms:  p.paymentTerms || '',
+        remarks:        '',
+        status:         'Pending',
+      });
+
+      this.router.navigate(['/invoices']);
+    } catch (err) {
+      console.error('Failed to convert proforma to invoice:', err);
+      alert('Failed to create invoice. Please try again.');
+    }
   }
 
   async generatePDF() {

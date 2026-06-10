@@ -196,11 +196,8 @@ export class CreateOfferComponent implements OnInit {
   }
 
   async ngOnInit() {
-    console.log('🟢 CreateOfferComponent initialized');
-
     const customerRows = await this.apiService.getAll('customers');
     this.customers = customerRows.map((r: any) => this.mapCustomer(r));
-    console.log('🟢 Customers loaded:', this.customers.length);
 
     // Generate preview offer ID for new offers
     this.previewOfferId = await this.generatePreviewOfferId();
@@ -215,8 +212,6 @@ export class CreateOfferComponent implements OnInit {
     }
 
     if (state && state.offer) {
-      console.log('✏️ Edit mode detected:', state.offer);
-
       this.isEditMode = true;
       this.editingOfferId = state.offer.id;  // UUID string
 
@@ -248,8 +243,6 @@ export class CreateOfferComponent implements OnInit {
           (c.name?.trim().toLowerCase() === this.offer.customerName?.trim().toLowerCase())
       ) || null;
 
-      console.log('🟢 Pre-selected customer:', this.selectedCustomer);
-
       // ✅ Restore inquiry details
       if (this.offer.inquiryNo != null) {
         try {
@@ -270,8 +263,6 @@ export class CreateOfferComponent implements OnInit {
             this.inquiryItemRates = (this.offer.items || []).map((item: any) => item.rate ?? 0);
           }
 
-          console.log('🟢 Restored inquiry:', this.selectedInquiry);
-          console.log('🟢 Frozen rate snapshot:', this.inquiryItemRates);
         } catch (error) {
           console.error('❌ Failed to restore inquiry:', error);
         }
@@ -506,10 +497,6 @@ export class CreateOfferComponent implements OnInit {
   }
 
   async saveOffer(sendEmail = false) {
-    console.log('═══════════════════════════════════════');
-    console.log('💾 SAVING OFFER');
-    console.log('═══════════════════════════════════════');
-
     if (this.isEditMode && this.editingOfferId && this.originalOffer) {
 
       // STEP 1: Mark original offer as superseded (using deep-cloned originalOffer)
@@ -518,7 +505,6 @@ export class CreateOfferComponent implements OnInit {
         id: this.editingOfferId,
         status: 'superseded'
       }));
-      console.log('🗂️ Original offer marked as superseded:', this.editingOfferId);
 
       // STEP 2: Create new versioned offer entry with current (edited) state
       const previousRef = this.originalOffer.offerRef || this.previewOfferId;
@@ -535,8 +521,7 @@ export class CreateOfferComponent implements OnInit {
         previousVersionId: this.editingOfferId
       });
 
-      const newOfferId = await this.apiService.add('offers', newOfferRow);
-      console.log('✅ New versioned offer created:', newVersionedRef, '(UUID:', newOfferId, ')');
+      await this.apiService.add('offers', newOfferRow);
 
     } else {
 
@@ -553,8 +538,6 @@ export class CreateOfferComponent implements OnInit {
       this.offer.id = offerId;
       this.offer.offerRef = this.previewOfferId;
 
-      console.log('✅ New offer created (UUID:', offerId, '| Ref:', this.previewOfferId, ')');
-
       await this.addReminder({
         type: 'offer',
         name: this.offer.customerName || '',
@@ -564,7 +547,6 @@ export class CreateOfferComponent implements OnInit {
       });
     }
 
-    console.log('═══════════════════════════════════════');
     if (sendEmail) {
       // Navigate back and signal offers list to open email modal for this offer
       this.router.navigate(['/offers'], { state: { openEmailForRef: this.offer.offerRef } });

@@ -143,7 +143,6 @@ export class OrdersComponent implements OnInit {
     return this.orders.filter(o => o.status === this.selectedFilter);
   }
 
-  applyFilter() { }
 
   /* -------- LOAD DATA -------- */
   private async loadInquiriesFromDB() {
@@ -340,8 +339,12 @@ export class OrdersComponent implements OnInit {
   /* -------- HELPERS -------- */
   private generateOrderNo(): string {
     const year = new Date().getFullYear();
-    const sequential = Math.floor((Date.now() % 1000000) / 10).toString().padStart(4, '0');
-    return `ORD/${year}/${sequential}`;
+    const maxSeq = this.orders.reduce((max, ord) => {
+      const parts = (ord.orderNo || '').split('/');
+      const n = parseInt(parts[2] || '0', 10);
+      return isNaN(n) ? max : Math.max(max, n);
+    }, 0);
+    return `ORD/${year}/${String(maxSeq + 1).padStart(4, '0')}`;
   }
 
   private async reduceInventoryForOrder(order: Order): Promise<void> {
@@ -380,7 +383,6 @@ export class OrdersComponent implements OnInit {
     try {
       const rows = await this.apiService.getAll('orders');
       this.orders = rows.map((r: any) => this.fromDbRow(r));
-      this.applyFilter();
     } catch (err) {
       console.error('❌ Failed to load orders:', err);
       this.orders = [];

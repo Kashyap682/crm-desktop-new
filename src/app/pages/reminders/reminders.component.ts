@@ -379,13 +379,4 @@ export class RemindersComponent implements OnInit, OnDestroy {
     } catch { /* non-critical — reminders are best-effort */ }
   }
 
-  async debugReminders() {
-    const rows = await this.apiService.getAll('reminders').catch(() => []);
-    const all = rows.map((r: any) => this.fromDbRow(r));
-    console.log('🔍 REMINDERS DEBUG');
-    console.log('Selected Date:', this.selectedDate);
-    console.log('Total reminders in DB:', all.length);
-    console.log('Filtered (will show):', this.filteredReminders.length);
-    console.log('Payment reminders:', this.dueInvoices.length);
-  }
 }

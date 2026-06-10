@@ -537,7 +537,7 @@ export class OffersComponent {
             return m ? parseInt(m[1], 10) === this.selectedOffer.inquiryNo : false;
           }) || null;
         } catch (error) {
-          console.log('⚠️ Could not load inquiry:', error);
+          console.error('Could not load inquiry:', error);
         }
       }
 

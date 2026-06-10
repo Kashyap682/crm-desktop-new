@@ -715,13 +715,11 @@ export class InquiryMasterComponent {
 
     if (this.isEditing) {
       await this.apiService.put('inquiries', this.toDbRow(this.currentInquiry));
-      console.log('✏️ Inquiry updated');
     } else {
       // Use the preview ID (computed in openAddModal) as the human-readable ref
       const row = { ...this.toDbRow(this.currentInquiry), inquiry_ref: this.previewInquiryId };
       const newUuid = await this.apiService.add('inquiries', row);
       this.currentInquiry._uuid = newUuid;
-      console.log('✅ NEW INQUIRY SAVED, ref:', this.previewInquiryId, 'uuid:', newUuid);
 
       await this.addReminder({
         type: 'inquiry',
@@ -773,7 +771,6 @@ export class InquiryMasterComponent {
     }
 
     await this.apiService.delete('inquiries', uuid);
-    console.log('✅ Deleted inquiry uuid:', uuid);
     await this.loadInquiries();
   }
 

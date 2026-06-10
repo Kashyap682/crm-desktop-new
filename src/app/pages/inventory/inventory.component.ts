@@ -207,8 +207,6 @@ export class InventoryComponent implements OnInit {
       );
 
       if (existingProduct && !this.isEditing) {
-        console.log('Found existing product:', existingProduct);
-
         const updatedQty = Number(existingProduct.quantity ?? 0) + Number(this.form.quantity ?? 0);
 
         await this.apiService.put('inventory', {
@@ -237,8 +235,6 @@ export class InventoryComponent implements OnInit {
           numberOfUnits: Number(this.form.numberOfUnits ?? 0),
           weight: Number(this.form.weight ?? 0)
         });
-
-        console.log(this.isEditing ? 'Updated product:' : 'Created new product:', formName);
       }
 
       await this.loadItems();
@@ -265,7 +261,6 @@ export class InventoryComponent implements OnInit {
         location: this.normalizeLocation(item.location),
         purchaseRate: item.purchaseRate ?? item.price ?? 0
       }));
-      console.log('✅ Loaded inventory items:', this.items.length);
     } catch (error) {
       console.error('❌ Error loading inventory:', error);
       this.items = [];
@@ -278,7 +273,6 @@ export class InventoryComponent implements OnInit {
       try {
         await this.apiService.delete('inventory', item.name);
         await this.loadItems();
-        console.log('✅ Deleted item:', displayName);
         this.closeActionMenu();
       } catch (error) {
         console.error('❌ Error deleting item:', error);
