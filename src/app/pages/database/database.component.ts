@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { ApiService } from '../../service/api.service';
 import { ToastService } from '../../service/toast.service';
+import { ConfirmService } from '../../service/confirm.service';
 
 @Component({
   selector: 'app-database',
@@ -33,7 +34,7 @@ export class DatabaseComponent implements OnInit {
   previewDoc: any = null;
   previewSafeUrl: SafeResourceUrl | null = null;
 
-  constructor(private apiService: ApiService, private sanitizer: DomSanitizer, private toastService: ToastService) { }
+  constructor(private apiService: ApiService, private sanitizer: DomSanitizer, private toastService: ToastService, private confirmService: ConfirmService) { }
 
   // ── Mapping helpers ──────────────────────────────────────
 
@@ -182,7 +183,7 @@ export class DatabaseComponent implements OnInit {
   }
 
   async deleteDocument(id: string) {
-    if (!confirm('Delete this document? This cannot be undone.')) return;
+    if (!await this.confirmService.confirm('Delete this document? This cannot be undone.', { danger: true })) return;
     try {
       await this.apiService.delete('documents', id);
       await this.loadDocuments();

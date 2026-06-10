@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../service/api.service';
 import { ToastService } from '../../service/toast.service';
+import { ConfirmService } from '../../service/confirm.service';
 import { jsPDF } from 'jspdf';
 
 interface Payment {
@@ -57,7 +58,7 @@ export class PaymentsComponent implements OnInit, DoCheck {
 
   newPayment: Payment = this.getEmptyPayment();
 
-  constructor(private apiService: ApiService, private toastService: ToastService) { }
+  constructor(private apiService: ApiService, private toastService: ToastService, private confirmService: ConfirmService) { }
 
   activeMenuId: any = null;
 
@@ -342,7 +343,7 @@ export class PaymentsComponent implements OnInit, DoCheck {
       this.toastService.warning('Successful payments cannot be deleted');
       return;
     }
-    if (!confirm(`Are you sure you want to delete payment ${payment.paymentId}?`)) return;
+    if (!await this.confirmService.confirm(`Delete payment ${payment.paymentId}?`, { danger: true })) return;
 
     this.payments.splice(index, 1);
     if (payment.id) {

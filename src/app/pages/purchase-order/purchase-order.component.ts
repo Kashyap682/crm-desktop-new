@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { ApiService } from '../../service/api.service';
 import { ToastService } from '../../service/toast.service';
+import { ConfirmService } from '../../service/confirm.service';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -208,7 +209,8 @@ export class PurchaseOrderComponent implements OnInit {
   constructor(
     private router: Router,
     private apiService: ApiService,
-    private toastService: ToastService
+    private toastService: ToastService,
+    private confirmService: ConfirmService
   ) { }
 
   async ngOnInit() {
@@ -840,8 +842,7 @@ export class PurchaseOrderComponent implements OnInit {
   }
 
   async deleteDraft(po: any) {
-    const confirmed = confirm(`Delete Purchase Order ${po.poNumber}?`);
-    if (!confirmed) return;
+    if (!await this.confirmService.confirm(`Delete Purchase Order ${po.poNumber}?`, { danger: true })) return;
     try {
       await this.apiService.delete('purchaseOrders', po.id);
       await this.loadPurchaseOrders();

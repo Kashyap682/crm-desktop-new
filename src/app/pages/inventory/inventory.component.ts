@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import * as XLSX from 'xlsx';
 import { ApiService } from '../../service/api.service';
 import { ToastService } from '../../service/toast.service';
+import { ConfirmService } from '../../service/confirm.service';
 
 @Component({
   selector: 'app-inventory',
@@ -32,7 +33,7 @@ export class InventoryComponent implements OnInit {
   activeMenuId: any = null;
   menuPosition: { top: string; left: string } = { top: '0px', left: '0px' };
 
-  constructor(private apiService: ApiService, private toastService: ToastService) { }
+  constructor(private apiService: ApiService, private toastService: ToastService, private confirmService: ConfirmService) { }
 
   toggleActionMenu(event: Event, item: any) {
     event.stopPropagation();
@@ -271,16 +272,15 @@ export class InventoryComponent implements OnInit {
 
   async deleteItem(item: any) {
     const displayName = item.displayName || item.name;
-    if (confirm(`Are you sure you want to delete "${displayName}" (${item.size})?`)) {
-      try {
-        await this.apiService.delete('inventory', item.name);
-        await this.loadItems();
-        this.toastService.success(`"${displayName}" deleted`);
-        this.closeActionMenu();
-      } catch (error) {
-        console.error('❌ Error deleting item:', error);
-        this.toastService.error('Failed to delete item');
-      }
+    if (!await this.confirmService.confirm(`Delete "${displayName}" (${item.size})?`, { danger: true })) return;
+    try {
+      await this.apiService.delete('inventory', item.name);
+      await this.loadItems();
+      this.toastService.success(`"${displayName}" deleted`);
+      this.closeActionMenu();
+    } catch (error) {
+      console.error('❌ Error deleting item:', error);
+      this.toastService.error('Failed to delete item');
     }
   }
 
@@ -466,7 +466,7 @@ export class InventoryComponent implements OnInit {
     }
   }
 
-  viewAttachment(it: any) {
+  async viewAttachment(it: any) {
     if (!it.attachment) {
       this.toastService.info('No attachment available');
       return;
@@ -480,12 +480,12 @@ export class InventoryComponent implements OnInit {
     link.download = fileName;
 
     if (fileType.startsWith('image/') || fileType === 'application/pdf') {
-      const action = confirm(
-        `File: ${fileName}\n\n` +
-        `Click OK to download or Cancel to view in new tab`
+      const download = await this.confirmService.confirm(
+        fileName,
+        { title: 'Open Attachment', confirmLabel: 'Download', cancelLabel: 'View in tab' }
       );
 
-      if (action) {
+      if (download) {
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);

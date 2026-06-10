@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../service/api.service';
 import { AuthService } from '../../service/auth.service';
 import { ToastService } from '../../service/toast.service';
+import { ConfirmService } from '../../service/confirm.service';
 
 interface OrgUser {
   id: string;
@@ -26,8 +27,6 @@ export class UserManagementComponent implements OnInit {
   currentUserId: string | undefined;
 
   isLoading = false;
-  errorMsg = '';
-  successMsg = '';
 
   // Add user form
   showAddModal = false;
@@ -41,7 +40,8 @@ export class UserManagementComponent implements OnInit {
   constructor(
     private apiService: ApiService,
     private authService: AuthService,
-    private toastService: ToastService
+    private toastService: ToastService,
+    private confirmService: ConfirmService
   ) {}
 
   ngOnInit() {
@@ -51,7 +51,6 @@ export class UserManagementComponent implements OnInit {
 
   async loadUsers() {
     this.isLoading = true;
-    this.errorMsg = '';
     try {
       const rows = await this.apiService.filter('authUsers', { org_id: this.apiService.getOrgId() });
       this.users = rows
@@ -65,8 +64,8 @@ export class UserManagementComponent implements OnInit {
         .sort((a: OrgUser, b: OrgUser) =>
           new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
         );
-    } catch (e: any) {
-      this.errorMsg = 'Failed to load users.';
+    } catch {
+      this.toastService.error('Failed to load users');
     }
     this.isLoading = false;
   }
@@ -98,10 +97,9 @@ export class UserManagementComponent implements OnInit {
         this.addForm.password,
         this.addForm.appRole
       );
-      this.successMsg = `User ${this.addForm.email} created successfully.`;
       this.closeAddModal();
       await this.loadUsers();
-      setTimeout(() => { this.successMsg = ''; }, 4000);
+      this.toastService.success(`User ${this.addForm.email} created`);
     } catch (e: any) {
       this.addError = e.message || 'Failed to create user.';
     }
@@ -117,10 +115,9 @@ export class UserManagementComponent implements OnInit {
     try {
       await this.apiService.put('authUsers', { id: user.id, app_role: newRole });
       user.appRole = newRole as OrgUser['appRole'];
-      this.successMsg = `${user.email}'s role updated to ${newRole}.`;
-      setTimeout(() => { this.successMsg = ''; }, 3000);
+      this.toastService.success(`${user.email}'s role updated to ${newRole}`);
     } catch {
-      this.errorMsg = 'Failed to update role.';
+      this.toastService.error('Failed to update role');
     }
     this.roleUpdating = null;
   }
@@ -131,15 +128,15 @@ export class UserManagementComponent implements OnInit {
       return;
     }
     const action = user.isActive ? 'deactivate' : 'activate';
-    if (!confirm(`${action.charAt(0).toUpperCase() + action.slice(1)} ${user.email}?`)) return;
+    const label = action.charAt(0).toUpperCase() + action.slice(1);
+    if (!await this.confirmService.confirm(`${label} ${user.email}?`, { confirmLabel: label, danger: user.isActive })) return;
 
     try {
       await this.apiService.put('authUsers', { id: user.id, is_active: !user.isActive });
       user.isActive = !user.isActive;
-      this.successMsg = `${user.email} ${action}d.`;
-      setTimeout(() => { this.successMsg = ''; }, 3000);
+      this.toastService.success(`${user.email} ${action}d`);
     } catch {
-      this.errorMsg = `Failed to ${action} user.`;
+      this.toastService.error(`Failed to ${action} user`);
     }
   }
 

@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import * as XLSX from 'xlsx';
 import { ApiService } from '../../service/api.service';
+import { ConfirmService } from '../../service/confirm.service';
 
 interface FileAttachment {
   name: string;
@@ -209,7 +210,7 @@ export class VendorComponent implements OnInit {
     } catch (_) { /* offline or API error */ }
   }
 
-  constructor(private apiService: ApiService) { }
+  constructor(private apiService: ApiService, private confirmService: ConfirmService) { }
 
   ngOnInit() { this.loadVendors(); }
 
@@ -477,7 +478,7 @@ export class VendorComponent implements OnInit {
 
   /* ─── Delete ─── */
   async deleteVendor(idx: number) {
-    if (!confirm('Delete this vendor?')) return;
+    if (!await this.confirmService.confirm('Delete this vendor?', { danger: true })) return;
     const vendor = this.filteredVendors[idx];
     if (!vendor.id) return;
     await this.apiService.delete('vendors', vendor.id);
@@ -542,19 +543,19 @@ export class VendorComponent implements OnInit {
   }
 
   async removeGSTFile(vendor: any) {
-    if (!confirm('Remove GST document?')) return;
+    if (!await this.confirmService.confirm('Remove GST document?')) return;
     vendor.gstFile = undefined;
     await this.apiService.put('vendors', this.toDbRow(vendor));
   }
 
   async removePanFile(vendor: any) {
-    if (!confirm('Remove PAN document?')) return;
+    if (!await this.confirmService.confirm('Remove PAN document?')) return;
     vendor.panFile = undefined;
     await this.apiService.put('vendors', this.toDbRow(vendor));
   }
 
   async removeMSMEFile(vendor: any) {
-    if (!confirm('Remove MSME document?')) return;
+    if (!await this.confirmService.confirm('Remove MSME document?')) return;
     vendor.msmeFile = undefined;
     vendor.msme = '';
     await this.apiService.put('vendors', this.toDbRow(vendor));

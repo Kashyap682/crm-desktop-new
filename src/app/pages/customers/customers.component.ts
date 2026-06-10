@@ -5,6 +5,7 @@ import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { utils, writeFile } from 'xlsx';
 import { ApiService } from '../../service/api.service';
+import { ConfirmService } from '../../service/confirm.service';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -366,13 +367,13 @@ export class CustomersComponent {
   }
 
   async removePanFile(customer: any) {
-    if (!confirm('Remove PAN document?')) return;
+    if (!await this.confirmService.confirm('Remove PAN document?')) return;
     customer.panFile = undefined;
     await this.apiService.put('customers', this.toDbRow(customer));
   }
 
   async removeMSMEFile(customer: any) {
-    if (!confirm('Remove MSME document?')) return;
+    if (!await this.confirmService.confirm('Remove MSME document?')) return;
     customer.msmeFile = undefined;
     customer.msme = '';
     await this.apiService.put('customers', this.toDbRow(customer));
@@ -395,7 +396,7 @@ export class CustomersComponent {
     event.target.value = '';
   }
 
-  constructor(private router: Router, private apiService: ApiService) {
+  constructor(private router: Router, private apiService: ApiService, private confirmService: ConfirmService) {
     this.loadItems();
     this.apiService.getAll('inventory').then(inv => this.inventory = inv);
   }
@@ -624,7 +625,7 @@ export class CustomersComponent {
   }
 
   async resetCustomers() {
-    if (!confirm('Delete ALL customers? This cannot be undone.')) return;
+    if (!await this.confirmService.confirm('Delete ALL customers? This cannot be undone.', { title: 'Delete All Customers', confirmLabel: 'Delete All', danger: true })) return;
     await this.apiService.deleteWhere('customers', { org_id: this.apiService.getOrgId() });
     this.customers = [];
   }

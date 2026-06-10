@@ -2,6 +2,8 @@ import { Component, OnInit, AfterViewInit, ChangeDetectorRef } from '@angular/co
 import { Router } from '@angular/router';
 import { ApiService } from '../../service/api.service';
 import { ToastService } from '../../service/toast.service';
+import { ConfirmService } from '../../service/confirm.service';
+import { environment } from '../../../environments/environment';
 import { FormsModule } from '@angular/forms';
 import { CommonModule } from '@angular/common';
 import jsPDF from 'jspdf';
@@ -91,7 +93,8 @@ export class SalesOrderComponent implements OnInit, AfterViewInit {
     private router: Router,
     private apiService: ApiService,
     private cdr: ChangeDetectorRef,
-    private toastService: ToastService
+    private toastService: ToastService,
+    private confirmService: ConfirmService
   ) { }
 
   // ── Mapping helpers ──────────────────────────────────────
@@ -754,18 +757,33 @@ export class SalesOrderComponent implements OnInit, AfterViewInit {
   }
 
   async saveDraft() {
-    await this.upsertSalesOrder('DRAFT');
-    this.toastService.success('Sales Order saved as Draft');
+    try {
+      await this.upsertSalesOrder('DRAFT');
+      this.toastService.success('Sales Order saved as Draft');
+    } catch (err) {
+      console.error('❌ Failed to save draft:', err);
+      this.toastService.error('Failed to save Draft');
+    }
   }
 
   async submitOrder() {
-    await this.upsertSalesOrder('SUBMITTED');
-    this.toastService.success('Sales Order submitted');
+    try {
+      await this.upsertSalesOrder('SUBMITTED');
+      this.toastService.success('Sales Order submitted');
+    } catch (err) {
+      console.error('❌ Failed to submit order:', err);
+      this.toastService.error('Failed to submit Sales Order');
+    }
   }
 
   async approveOrder() {
-    await this.upsertSalesOrder('APPROVED');
-    this.toastService.success('Sales Order approved');
+    try {
+      await this.upsertSalesOrder('APPROVED');
+      this.toastService.success('Sales Order approved');
+    } catch (err) {
+      console.error('❌ Failed to approve order:', err);
+      this.toastService.error('Failed to approve Sales Order');
+    }
   }
 
   // ===== TABLE ACTIONS =====
@@ -813,7 +831,7 @@ export class SalesOrderComponent implements OnInit, AfterViewInit {
   }
 
   async deleteDraft(order: any) {
-    if (!confirm(`Delete Sales Order ${order.orderNo}?`)) return;
+    if (!await this.confirmService.confirm(`Delete Sales Order ${order.orderNo}?`, { danger: true })) return;
     try {
       await this.apiService.delete('salesOrders', order.id);
       await this.loadSalesOrders();
@@ -1178,7 +1196,7 @@ export class SalesOrderComponent implements OnInit, AfterViewInit {
   }
 
   showEmailDropdown = false;
-  emailPresets = ['ak@navbharatgroup.com', 'rs@navbharatgroup.com'];
+  emailPresets = [environment.emailDefaults.cc, environment.emailDefaults.bcc];
 
   sendSalesOrderEmail(recipient: string) {
     this.showEmailDropdown = false;

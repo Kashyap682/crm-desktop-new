@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { ApiService } from '../../service/api.service';
 import { ToastService } from '../../service/toast.service';
+import { ConfirmService } from '../../service/confirm.service';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 
@@ -62,7 +63,7 @@ export class ProformaInvoiceComponent implements OnInit {
   };
   loading: boolean | undefined;
 
-  constructor(private apiService: ApiService, private router: Router, private toastService: ToastService) { }
+  constructor(private apiService: ApiService, private router: Router, private toastService: ToastService, private confirmService: ConfirmService) { }
 
   // ── Mapping helpers ──────────────────────────────────────
 
@@ -505,7 +506,7 @@ export class ProformaInvoiceComponent implements OnInit {
   }
 
   async convertToInvoice(p: any) {
-    if (!confirm(`Convert ${p.proformaNumber} to a Tax Invoice?`)) return;
+    if (!await this.confirmService.confirm(`Convert ${p.proformaNumber} to a Tax Invoice?`, { title: 'Convert to Invoice', confirmLabel: 'Convert' })) return;
 
     try {
       // Compute next sequential invoice number

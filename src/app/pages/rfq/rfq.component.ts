@@ -2,6 +2,7 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../service/api.service';
+import { ConfirmService } from '../../service/confirm.service';
 import { saveAs } from 'file-saver';
 
 interface RfqItem {
@@ -90,7 +91,7 @@ export class RfqComponent implements OnInit {
   inquiries: any[] = [];
   vendors: any[] = [];
 
-  constructor(private apiService: ApiService) { }
+  constructor(private apiService: ApiService, private confirmService: ConfirmService) { }
 
   // ── Mapping helpers ──────────────────────────────────────
 
@@ -420,7 +421,7 @@ export class RfqComponent implements OnInit {
   }
 
   async deleteRfq(rfq: RfqRecord) {
-    if (!confirm(`Delete ${rfq.rfqId}?`)) return;
+    if (!await this.confirmService.confirm(`Delete ${rfq.rfqId}?`, { danger: true })) return;
     await this.apiService.delete('rfqs', rfq.id!);
     await this.loadRfqs();
   }

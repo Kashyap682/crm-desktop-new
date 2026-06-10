@@ -3,6 +3,7 @@ import { CommonModule } from "@angular/common";
 import { FormsModule } from "@angular/forms";
 import { Router } from "@angular/router";
 import { ApiService } from '../../service/api.service';
+import { environment } from '../../../environments/environment';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -1122,11 +1123,11 @@ export class OffersComponent {
     const secondaryEmail = customer?.secondaryContact?.email || '';
     const directEmail   = customer?.email || '';
     const toEmail  = primaryEmail  || directEmail || '';
-    const ccEmail  = secondaryEmail || 'ak@navbharatgroup.com';
+    const ccEmail  = secondaryEmail || environment.emailDefaults.cc;
     this.emailForm = {
       to: toEmail,
       cc: ccEmail,
-      bcc: 'rs@navbharatgroup.com',
+      bcc: environment.emailDefaults.bcc,
       subject: `Your enquiry for supply of ${this.getOfferItemNames(offer)}`,
       body: `Dear ${offer.customerName || 'Sir/Ma\'am'},\n\nPlease find attached our offer ${offer.offerRef || ''} for your kind consideration.\n\nRegards,\nNavbharat Insulation & Engg Co`
     };
@@ -1161,7 +1162,7 @@ export class OffersComponent {
 
   /* ── C34: Send Sales Order via email ─────────────────── */
   showSoEmailDropdown = false;
-  soEmailPresets = ['ak@navbharatgroup.com', 'rs@navbharatgroup.com'];
+  soEmailPresets = [environment.emailDefaults.cc, environment.emailDefaults.bcc];
 
   private async addReminder(opts: {
     type: string; name: string; referenceNo: string; daysFromNow: number; note: string;

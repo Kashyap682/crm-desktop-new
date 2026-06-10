@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../service/api.service';
 import { ToastService } from '../../service/toast.service';
+import { ConfirmService } from '../../service/confirm.service';
 
 type OrderStatus = 'offers' | 'ongoing' | 'completed';
 
@@ -58,7 +59,7 @@ export class OrdersComponent implements OnInit {
   inquiriesList: any[] = [];
   inventoryList: any[] = [];
 
-  constructor(private apiService: ApiService, private toastService: ToastService) { }
+  constructor(private apiService: ApiService, private toastService: ToastService, private confirmService: ConfirmService) { }
 
   // Action Menu Helpers
   activeMenuId: any = null;
@@ -328,7 +329,7 @@ export class OrdersComponent implements OnInit {
 
   /* -------- DELETE ORDER -------- */
   async deleteOrder(orderId: string | undefined) {
-    if (!confirm('Delete this order?')) return;
+    if (!await this.confirmService.confirm('Delete this order?', { danger: true })) return;
     if (orderId == null) return;
     try {
       await this.apiService.delete('orders', orderId);

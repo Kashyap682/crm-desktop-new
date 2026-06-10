@@ -15,6 +15,7 @@ import {
 } from '../../models/invoice.model';
 import { ApiService } from '../../service/api.service';
 import { ToastService } from '../../service/toast.service';
+import { ConfirmService } from '../../service/confirm.service';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import html2canvas from 'html2canvas';
@@ -52,7 +53,7 @@ export class InvoicesComponent implements OnInit {
   taxRates: TaxRates = DEFAULT_TAX_RATES;
   invoiceForm: InvoiceModel = this.createEmptyInvoice();
 
-  constructor(private apiService: ApiService, private toastService: ToastService) { }
+  constructor(private apiService: ApiService, private toastService: ToastService, private confirmService: ConfirmService) { }
 
   // ── Mapping helpers ──────────────────────────────────────
 
@@ -266,8 +267,9 @@ export class InvoicesComponent implements OnInit {
         const newQty = currentQty - deductQty;
 
         if (newQty < 0) {
-          const proceed = confirm(
-            `Warning: Insufficient stock for "${inventoryItem.displayName || inventoryItem.name}"\n\nAvailable: ${currentQty}\nRequired: ${deductQty}\n\nThis will result in negative stock. Continue?`
+          const proceed = await this.confirmService.confirm(
+            `Insufficient stock for "${inventoryItem.displayName || inventoryItem.name}". Available: ${currentQty}, required: ${deductQty}. This will result in negative stock.`,
+            { title: 'Insufficient Stock', confirmLabel: 'Continue anyway', danger: true }
           );
           if (!proceed) throw new Error('User cancelled due to insufficient stock');
         }
@@ -621,7 +623,7 @@ export class InvoicesComponent implements OnInit {
 
   async deleteInvoice(inv: InvoiceModel) {
     const label = inv.invoiceNo || inv.id || 'this invoice';
-    if (!confirm(`Delete ${label}?\n\nNote: Inventory quantities will be restored.`)) return;
+    if (!await this.confirmService.confirm(`Delete ${label}? Inventory quantities will be restored.`, { danger: true })) return;
     if (!inv.id) { this.toastService.error('Cannot delete invoice — missing ID'); return; }
 
     if (inv.items && inv.items.length > 0) await this.restoreInventory(inv.items);
