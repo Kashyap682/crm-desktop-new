@@ -6,6 +6,7 @@ import { Router } from '@angular/router';
 import { utils, writeFile } from 'xlsx';
 import { ApiService } from '../../service/api.service';
 import { ConfirmService } from '../../service/confirm.service';
+import { ToastService } from '../../service/toast.service';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -306,6 +307,11 @@ export class CustomersComponent {
   readFileToAddr(event: any, addr: any, key: string) {
     const file = event.target.files[0];
     if (!file) return;
+    if (file.size > this.MAX_FILE_MB * 1024 * 1024) {
+      this.toastService.warning(`File too large — maximum ${this.MAX_FILE_MB} MB allowed`);
+      event.target.value = '';
+      return;
+    }
     const reader = new FileReader();
     reader.onload = () => { addr[key] = { name: file.name, type: file.type, data: reader.result as string }; };
     reader.readAsDataURL(file);
@@ -316,6 +322,11 @@ export class CustomersComponent {
   onPanFileSelect(event: any) {
     const file = event.target.files[0];
     if (!file) return;
+    if (file.size > this.MAX_FILE_MB * 1024 * 1024) {
+      this.toastService.warning(`File too large — maximum ${this.MAX_FILE_MB} MB allowed`);
+      event.target.value = '';
+      return;
+    }
     const reader = new FileReader();
     reader.onload = () => {
       this.newCustomer.panFile = { name: file.name, type: file.type, data: reader.result as string };
@@ -326,6 +337,11 @@ export class CustomersComponent {
   async onPanFileSelectFromTable(event: any, customer: any) {
     const file = event.target.files[0];
     if (!file) return;
+    if (file.size > this.MAX_FILE_MB * 1024 * 1024) {
+      this.toastService.warning(`File too large — maximum ${this.MAX_FILE_MB} MB allowed`);
+      event.target.value = '';
+      return;
+    }
     const reader = new FileReader();
     reader.onload = async () => {
       customer.panFile = { name: file.name, type: file.type, data: reader.result as string };
@@ -337,6 +353,11 @@ export class CustomersComponent {
   onLogoSelect(event: any) {
     const file = event.target.files[0];
     if (!file) return;
+    if (file.size > this.MAX_FILE_MB * 1024 * 1024) {
+      this.toastService.warning(`File too large — maximum ${this.MAX_FILE_MB} MB allowed`);
+      event.target.value = '';
+      return;
+    }
     const reader = new FileReader();
     reader.onload = () => {
       this.newCustomer.logo = { name: file.name, type: file.type, data: reader.result as string };
@@ -348,6 +369,11 @@ export class CustomersComponent {
   onMsmeFileSelect(event: any) {
     const file = event.target.files[0];
     if (!file) return;
+    if (file.size > this.MAX_FILE_MB * 1024 * 1024) {
+      this.toastService.warning(`File too large — maximum ${this.MAX_FILE_MB} MB allowed`);
+      event.target.value = '';
+      return;
+    }
     const reader = new FileReader();
     reader.onload = () => {
       this.newCustomer.msmeFile = { name: file.name, type: file.type, data: reader.result as string };
@@ -358,6 +384,11 @@ export class CustomersComponent {
   async onMsmeFileSelectFromTable(event: any, customer: any) {
     const file = event.target.files[0];
     if (!file) return;
+    if (file.size > this.MAX_FILE_MB * 1024 * 1024) {
+      this.toastService.warning(`File too large — maximum ${this.MAX_FILE_MB} MB allowed`);
+      event.target.value = '';
+      return;
+    }
     const reader = new FileReader();
     reader.onload = async () => {
       customer.msmeFile = { name: file.name, type: file.type, data: reader.result as string };
@@ -396,7 +427,9 @@ export class CustomersComponent {
     event.target.value = '';
   }
 
-  constructor(private router: Router, private apiService: ApiService, private confirmService: ConfirmService) {
+  private readonly MAX_FILE_MB = 5;
+
+  constructor(private router: Router, private apiService: ApiService, private toastService: ToastService, private confirmService: ConfirmService) {
     this.loadItems();
     this.apiService.getAll('inventory').then(inv => this.inventory = inv);
   }

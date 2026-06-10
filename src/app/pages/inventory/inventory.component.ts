@@ -453,17 +453,23 @@ export class InventoryComponent implements OnInit {
   /* ===============================
      Attachments
   =============================== */
+  private readonly MAX_FILE_MB = 5;
+
   uploadAttachment(e: any) {
     const file = e.target.files[0];
-    if (file) {
-      const r = new FileReader();
-      r.onload = () => {
-        this.form.attachment = r.result;
-        this.form.attachmentName = file.name;
-        this.form.attachmentType = file.type;
-      };
-      r.readAsDataURL(file);
+    if (!file) return;
+    if (file.size > this.MAX_FILE_MB * 1024 * 1024) {
+      this.toastService.warning(`File too large — maximum ${this.MAX_FILE_MB} MB allowed`);
+      e.target.value = '';
+      return;
     }
+    const r = new FileReader();
+    r.onload = () => {
+      this.form.attachment = r.result;
+      this.form.attachmentName = file.name;
+      this.form.attachmentType = file.type;
+    };
+    r.readAsDataURL(file);
   }
 
   async viewAttachment(it: any) {

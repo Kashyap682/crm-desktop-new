@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import * as XLSX from 'xlsx';
 import { ApiService } from '../../service/api.service';
 import { ConfirmService } from '../../service/confirm.service';
+import { ToastService } from '../../service/toast.service';
 
 interface FileAttachment {
   name: string;
@@ -210,7 +211,9 @@ export class VendorComponent implements OnInit {
     } catch (_) { /* offline or API error */ }
   }
 
-  constructor(private apiService: ApiService, private confirmService: ConfirmService) { }
+  private readonly MAX_FILE_MB = 5;
+
+  constructor(private apiService: ApiService, private toastService: ToastService, private confirmService: ConfirmService) { }
 
   ngOnInit() { this.loadVendors(); }
 
@@ -487,6 +490,11 @@ export class VendorComponent implements OnInit {
 
   /* ─── File helpers ─── */
   private readFile(file: File, cb: (f: FileAttachment) => void) {
+    if (!file) return;
+    if (file.size > this.MAX_FILE_MB * 1024 * 1024) {
+      this.toastService.warning(`File too large — maximum ${this.MAX_FILE_MB} MB allowed`);
+      return;
+    }
     const r = new FileReader();
     r.onload = () => cb({ name: file.name, type: file.type, data: r.result as string });
     r.readAsDataURL(file);

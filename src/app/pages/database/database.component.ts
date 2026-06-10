@@ -107,10 +107,17 @@ export class DatabaseComponent implements OnInit {
     input?.click();
   }
 
+  private readonly MAX_FILE_MB = 5;
+
   onFileSelect(event: Event) {
     const input = event.target as HTMLInputElement;
     if (!input.files?.length) return;
     const file = input.files[0];
+    if (file.size > this.MAX_FILE_MB * 1024 * 1024) {
+      this.toastService.warning(`File too large — maximum ${this.MAX_FILE_MB} MB allowed`);
+      input.value = '';
+      return;
+    }
     this.pendingFile = file;
     const baseName = file.name.replace(/\.[^/.]+$/, '');
     this.uploadForm = { name: baseName, category: '', material: '', tags: '' };
