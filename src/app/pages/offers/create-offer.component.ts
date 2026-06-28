@@ -185,13 +185,24 @@ export class CreateOfferComponent implements OnInit {
   private mapInquiry(row: any): any {
     const refMatch = (row.inquiry_ref || '').match(/INQ-(\d+)/i);
     return {
-      _uuid:        row.id,
-      id:           refMatch ? parseInt(refMatch[1], 10) : null,
-      companyName:  row.company_name   || '',
-      customerName: row.customer_name  || '',
-      decision:     row.decision       || '',
-      items:        Array.isArray(row.items) ? row.items : [],
-      inquiryRef:   row.inquiry_ref    || '',
+      _uuid:         row.id,
+      id:            refMatch ? parseInt(refMatch[1], 10) : null,
+      inquiryRef:    row.inquiry_ref           || '',
+      date:          row.date                  || '',
+      companyName:   row.company_name          || '',
+      customerName:  row.customer_name         || '',
+      customerPhone: row.customer_phone        || '',
+      email:         row.email                 || '',
+      mobile:        row.mobile                || '',
+      inquiryType:   row.inquiry_type          || '',
+      notes:         row.notes                 || '',
+      status:        row.status                || 'open',
+      decision:      row.decision              || '',
+      officeAddress: row.office_address        || '',
+      billing:       row.billing               || {},
+      shipping:      row.shipping              || {},
+      items:         Array.isArray(row.items)      ? row.items      : [],
+      followUps:     Array.isArray(row.follow_ups) ? row.follow_ups : [],
     };
   }
 
@@ -271,7 +282,16 @@ export class CreateOfferComponent implements OnInit {
   }
 
   async onCustomerChange() {
+    // Reset any previously selected inquiry when the company changes
+    this.selectedInquiry = null;
+    this.offer.inquiryNo = null;
+    this.offer.items = [];
+    this.selectedInquiryItemIndices = [];
+
     if (!this.selectedCustomer) {
+      this.offer.customerName = '';
+      this.offer.customerId = null;
+      this.offer.customerSnapshot = null;
       this.offer.businessVertical = '';
       return;
     }
@@ -287,12 +307,17 @@ export class CreateOfferComponent implements OnInit {
     const inquiryRows = await this.apiService.getAll('inquiries');
     const allInquiries = inquiryRows.map((r: any) => this.mapInquiry(r));
 
-    const customerName = this.normalizeText(customer.name);
     const companyName  = this.normalizeText(customer.companyName || customer.name);
+    const contactName  = this.normalizeText(customer.name);
+
     this.inquiries = allInquiries.filter((i: any) => {
-      const inqCustomerName = this.normalizeText(i.customerName);
       const inqCompanyName  = this.normalizeText(i.companyName);
-      return inqCustomerName === customerName || inqCompanyName === companyName;
+      const inqCustomerName = this.normalizeText(i.customerName);
+      // Primary match: by company name
+      if (companyName && inqCompanyName === companyName) return true;
+      // Secondary match: by individual contact name (only when non-empty to avoid false positives)
+      if (contactName && inqCustomerName === contactName) return true;
+      return false;
     });
 
     this.showInquiryPopup = this.inquiries.length > 0;

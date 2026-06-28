@@ -3,6 +3,8 @@ import { CommonModule } from "@angular/common";
 import { FormsModule } from "@angular/forms";
 import { Router } from "@angular/router";
 import { ApiService } from '../../service/api.service';
+import { ToastService } from '../../service/toast.service';
+import { ConfirmService } from '../../service/confirm.service';
 import { environment } from '../../../environments/environment';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -91,7 +93,7 @@ export class OffersComponent {
 
   offerLetterKeys = Object.keys(this.offerLetter);
 
-  constructor(private router: Router, private apiService: ApiService) {
+  constructor(private router: Router, private apiService: ApiService, private toastService: ToastService, private confirmService: ConfirmService) {
     this.loadOffers();
     this.loadInquiries();
   }
@@ -519,8 +521,14 @@ export class OffersComponent {
   }
 
   async deleteOffer(id: any) {
-    await this.apiService.delete('offers', id);
-    await this.loadOffers();
+    if (!await this.confirmService.confirm('Delete this offer?', { danger: true })) return;
+    try {
+      await this.apiService.delete('offers', id);
+      await this.loadOffers();
+      this.toastService.success('Offer deleted');
+    } catch {
+      this.toastService.error('Failed to delete offer');
+    }
   }
 
   async openOfferLetterModal() {
@@ -979,27 +987,33 @@ export class OffersComponent {
       validity:      this.offerLetter['validity']
     });
 
-    if (isNewOffer) {
-      const previewRef = await this.generatePreviewOfferId();
-      const newId = await this.apiService.add('offers', this.toDbRow({
-        ...this.selectedOffer,
-        offerRef: previewRef,
-        date: new Date().toISOString().slice(0, 10),
-        status: 'active'
-      }));
-      this.selectedOffer.id = newId;
-      this.selectedOffer.offerRef = previewRef;
-      await this.addReminder({
-        type: 'offer',
-        name: this.selectedOffer.customerName || '',
-        referenceNo: previewRef,
-        daysFromNow: 2,
-        note: `Follow up on offer ${previewRef}`,
-      });
-    } else {
-      await this.apiService.put('offers', this.toDbRow(this.selectedOffer));
+    try {
+      if (isNewOffer) {
+        const previewRef = await this.generatePreviewOfferId();
+        const newId = await this.apiService.add('offers', this.toDbRow({
+          ...this.selectedOffer,
+          offerRef: previewRef,
+          date: new Date().toISOString().slice(0, 10),
+          status: 'active'
+        }));
+        this.selectedOffer.id = newId;
+        this.selectedOffer.offerRef = previewRef;
+        await this.addReminder({
+          type: 'offer',
+          name: this.selectedOffer.customerName || '',
+          referenceNo: previewRef,
+          daysFromNow: 2,
+          note: `Follow up on offer ${previewRef}`,
+        });
+        this.toastService.success(`Offer ${previewRef} created`);
+      } else {
+        await this.apiService.put('offers', this.toDbRow(this.selectedOffer));
+        this.toastService.success('Offer saved');
+      }
+      await this.loadOffers();
+    } catch {
+      this.toastService.error('Failed to save offer');
     }
-    await this.loadOffers();
   }
 
   getFollowUpDate(days: number = 2): string {

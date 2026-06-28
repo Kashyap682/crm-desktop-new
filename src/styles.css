@@ -1,5 +1,15 @@
 /* CRM Global Modal (same as Customers) */
 
+/* Global fix: select elements always render dark text regardless of parent color */
+select {
+  color: #1a202c !important;
+  background: white !important;
+}
+select option {
+  color: #1a202c !important;
+  background: white !important;
+}
+
 html,
 body {
   height: 100%;

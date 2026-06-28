@@ -474,9 +474,15 @@ export class VendorComponent implements OnInit {
 
   /* ─── Save ─── */
   async submitForm() {
-    await this.apiService.put('vendors', this.toDbRow(this.newVendor));
-    this.cancelModal();
-    await this.loadVendors();
+    const isNew = !this.newVendor.id;
+    try {
+      await this.apiService.put('vendors', this.toDbRow(this.newVendor));
+      this.cancelModal();
+      await this.loadVendors();
+      this.toastService.success(isNew ? `${this.newVendor.companyName} added` : `${this.newVendor.companyName} updated`);
+    } catch {
+      this.toastService.error('Failed to save vendor');
+    }
   }
 
   /* ─── Delete ─── */
@@ -484,8 +490,13 @@ export class VendorComponent implements OnInit {
     if (!await this.confirmService.confirm('Delete this vendor?', { danger: true })) return;
     const vendor = this.filteredVendors[idx];
     if (!vendor.id) return;
-    await this.apiService.delete('vendors', vendor.id);
-    await this.loadVendors();
+    try {
+      await this.apiService.delete('vendors', vendor.id);
+      await this.loadVendors();
+      this.toastService.success(`${vendor.companyName} deleted`);
+    } catch {
+      this.toastService.error('Failed to delete vendor');
+    }
   }
 
   /* ─── File helpers ─── */
@@ -545,28 +556,48 @@ export class VendorComponent implements OnInit {
     const file = e.target.files[0];
     if (!file) return;
     this.readFile(file, async f => {
-      vendor[key] = f;
-      await this.apiService.put('vendors', this.toDbRow(vendor));
+      try {
+        vendor[key] = f;
+        await this.apiService.put('vendors', this.toDbRow(vendor));
+        this.toastService.success('Document uploaded');
+      } catch {
+        this.toastService.error('Failed to upload document');
+      }
     });
   }
 
   async removeGSTFile(vendor: any) {
     if (!await this.confirmService.confirm('Remove GST document?')) return;
-    vendor.gstFile = undefined;
-    await this.apiService.put('vendors', this.toDbRow(vendor));
+    try {
+      vendor.gstFile = undefined;
+      await this.apiService.put('vendors', this.toDbRow(vendor));
+      this.toastService.success('GST document removed');
+    } catch {
+      this.toastService.error('Failed to remove document');
+    }
   }
 
   async removePanFile(vendor: any) {
     if (!await this.confirmService.confirm('Remove PAN document?')) return;
-    vendor.panFile = undefined;
-    await this.apiService.put('vendors', this.toDbRow(vendor));
+    try {
+      vendor.panFile = undefined;
+      await this.apiService.put('vendors', this.toDbRow(vendor));
+      this.toastService.success('PAN document removed');
+    } catch {
+      this.toastService.error('Failed to remove document');
+    }
   }
 
   async removeMSMEFile(vendor: any) {
     if (!await this.confirmService.confirm('Remove MSME document?')) return;
-    vendor.msmeFile = undefined;
-    vendor.msme = '';
-    await this.apiService.put('vendors', this.toDbRow(vendor));
+    try {
+      vendor.msmeFile = undefined;
+      vendor.msme = '';
+      await this.apiService.put('vendors', this.toDbRow(vendor));
+      this.toastService.success('MSME document removed');
+    } catch {
+      this.toastService.error('Failed to remove document');
+    }
   }
 
   /* ─── Excel ─── */

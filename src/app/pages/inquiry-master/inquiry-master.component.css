@@ -650,7 +650,8 @@
   font-size: 14px;
   font-family: inherit;
   transition: all 0.2s ease;
-  background: white;
+  background: white !important;
+  color: #1a202c !important;
   box-sizing: border-box;
 }
 

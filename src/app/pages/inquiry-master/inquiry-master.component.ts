@@ -3,6 +3,8 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { ApiService } from '../../service/api.service';
+import { ToastService } from '../../service/toast.service';
+import { ConfirmService } from '../../service/confirm.service';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -194,6 +196,8 @@ export class InquiryMasterComponent {
 
   constructor(
     private apiService: ApiService,
+    private toastService: ToastService,
+    private confirmService: ConfirmService,
     private router: Router,
     private ngZone: NgZone
   ) {
@@ -712,42 +716,45 @@ export class InquiryMasterComponent {
 
   async saveInquiry() {
     if (!this.currentInquiry) return;
+    const isNew = !this.isEditing;
+    try {
+      if (this.isEditing) {
+        await this.apiService.put('inquiries', this.toDbRow(this.currentInquiry));
+      } else {
+        // Use the preview ID (computed in openAddModal) as the human-readable ref
+        const row = { ...this.toDbRow(this.currentInquiry), inquiry_ref: this.previewInquiryId };
+        const newUuid = await this.apiService.add('inquiries', row);
+        this.currentInquiry._uuid = newUuid;
 
-    if (this.isEditing) {
-      await this.apiService.put('inquiries', this.toDbRow(this.currentInquiry));
-    } else {
-      // Use the preview ID (computed in openAddModal) as the human-readable ref
-      const row = { ...this.toDbRow(this.currentInquiry), inquiry_ref: this.previewInquiryId };
-      const newUuid = await this.apiService.add('inquiries', row);
-      this.currentInquiry._uuid = newUuid;
-
-      await this.addReminder({
-        type: 'inquiry',
-        name: this.currentInquiry.companyName || '',
-        referenceNo: this.previewInquiryId || '',
-        daysFromNow: 2,
-        note: `Follow up on inquiry ${this.previewInquiryId}`,
-      });
-    }
-
-    await this.loadInquiries();
-    this.showAddEditModal = false;
-
-    if (!this.isEditing) {
-      const savedCompany = this.currentInquiry?.companyName;
-      const customer = this.customers.find((c: any) => c.companyName === savedCompany);
-      if (!customer) {
-        // Completely new customer — not in database yet
-        this.verificationPopupIsNewCustomer = true;
-        this.showVerificationPopup = true;
-      } else if (!customer.billing?.gstVerified) {
-        // Existing customer but GST not verified
-        this.verificationPopupIsNewCustomer = false;
-        this.showVerificationPopup = true;
+        await this.addReminder({
+          type: 'inquiry',
+          name: this.currentInquiry.companyName || '',
+          referenceNo: this.previewInquiryId || '',
+          daysFromNow: 2,
+          note: `Follow up on inquiry ${this.previewInquiryId}`,
+        });
       }
-    }
 
-    this.currentInquiry = null;
+      await this.loadInquiries();
+      this.showAddEditModal = false;
+      this.toastService.success(isNew ? `Inquiry ${this.previewInquiryId} created` : 'Inquiry updated');
+
+      if (isNew) {
+        const savedCompany = this.currentInquiry?.companyName;
+        const customer = this.customers.find((c: any) => c.companyName === savedCompany);
+        if (!customer) {
+          this.verificationPopupIsNewCustomer = true;
+          this.showVerificationPopup = true;
+        } else if (!customer.billing?.gstVerified) {
+          this.verificationPopupIsNewCustomer = false;
+          this.showVerificationPopup = true;
+        }
+      }
+
+      this.currentInquiry = null;
+    } catch {
+      this.toastService.error('Failed to save inquiry');
+    }
   }
 
   /* -----------------------------
@@ -770,8 +777,14 @@ export class InquiryMasterComponent {
       return;
     }
 
-    await this.apiService.delete('inquiries', uuid);
-    await this.loadInquiries();
+    if (!await this.confirmService.confirm(`Delete inquiry ${inq.inquiryRef || seqId}?`, { danger: true })) return;
+    try {
+      await this.apiService.delete('inquiries', uuid);
+      await this.loadInquiries();
+      this.toastService.success('Inquiry deleted');
+    } catch {
+      this.toastService.error('Failed to delete inquiry');
+    }
   }
 
 
@@ -814,7 +827,12 @@ export class InquiryMasterComponent {
     };
 
     this.followUpTarget.followUps.push(entry);
-    await this.apiService.put('inquiries', this.toDbRow(this.followUpTarget));
+    try {
+      await this.apiService.put('inquiries', this.toDbRow(this.followUpTarget));
+      this.toastService.success('Follow-up added');
+    } catch {
+      this.toastService.error('Failed to save follow-up');
+    }
     this.closeFollowUpModal();
     await this.loadInquiries();
   }
@@ -842,7 +860,12 @@ export class InquiryMasterComponent {
       date: new Date().toLocaleDateString()
     };
 
-    await this.apiService.put('inquiries', this.toDbRow(this.lostTarget));
+    try {
+      await this.apiService.put('inquiries', this.toDbRow(this.lostTarget));
+      this.toastService.success('Inquiry marked as lost');
+    } catch {
+      this.toastService.error('Failed to update inquiry');
+    }
     this.closeLostModal();
     await this.loadInquiries();
   }

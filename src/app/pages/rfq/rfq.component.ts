@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../service/api.service';
 import { ConfirmService } from '../../service/confirm.service';
+import { ToastService } from '../../service/toast.service';
 import { saveAs } from 'file-saver';
 
 interface RfqItem {
@@ -91,7 +92,7 @@ export class RfqComponent implements OnInit {
   inquiries: any[] = [];
   vendors: any[] = [];
 
-  constructor(private apiService: ApiService, private confirmService: ConfirmService) { }
+  constructor(private apiService: ApiService, private toastService: ToastService, private confirmService: ConfirmService) { }
 
   // ── Mapping helpers ──────────────────────────────────────
 
@@ -390,10 +391,16 @@ export class RfqComponent implements OnInit {
   }
 
   async saveRfq() {
-    const payload = this.buildPayload('DRAFT');
-    await this.apiService.put('rfqs', this.toDbRow(payload));
-    await this.loadRfqs();
-    this.showForm = false;
+    try {
+      const payload = this.buildPayload('DRAFT');
+      const isNew = !this.editingRfq;
+      await this.apiService.put('rfqs', this.toDbRow(payload));
+      await this.loadRfqs();
+      this.showForm = false;
+      this.toastService.success(isNew ? 'RFQ created' : 'RFQ saved');
+    } catch {
+      this.toastService.error('Failed to save RFQ');
+    }
   }
 
   async cancelForm() {
@@ -422,8 +429,13 @@ export class RfqComponent implements OnInit {
 
   async deleteRfq(rfq: RfqRecord) {
     if (!await this.confirmService.confirm(`Delete ${rfq.rfqId}?`, { danger: true })) return;
-    await this.apiService.delete('rfqs', rfq.id!);
-    await this.loadRfqs();
+    try {
+      await this.apiService.delete('rfqs', rfq.id!);
+      await this.loadRfqs();
+      this.toastService.success(`${rfq.rfqId} deleted`);
+    } catch {
+      this.toastService.error('Failed to delete RFQ');
+    }
   }
 
   /** Export from list table (uses saved record directly) */

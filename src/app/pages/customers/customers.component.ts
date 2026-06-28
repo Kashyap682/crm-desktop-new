@@ -399,20 +399,35 @@ export class CustomersComponent {
 
   async removePanFile(customer: any) {
     if (!await this.confirmService.confirm('Remove PAN document?')) return;
-    customer.panFile = undefined;
-    await this.apiService.put('customers', this.toDbRow(customer));
+    try {
+      customer.panFile = undefined;
+      await this.apiService.put('customers', this.toDbRow(customer));
+      this.toastService.success('PAN document removed');
+    } catch {
+      this.toastService.error('Failed to remove document');
+    }
   }
 
   async removeMSMEFile(customer: any) {
     if (!await this.confirmService.confirm('Remove MSME document?')) return;
-    customer.msmeFile = undefined;
-    customer.msme = '';
-    await this.apiService.put('customers', this.toDbRow(customer));
+    try {
+      customer.msmeFile = undefined;
+      customer.msme = '';
+      await this.apiService.put('customers', this.toDbRow(customer));
+      this.toastService.success('MSME document removed');
+    } catch {
+      this.toastService.error('Failed to remove document');
+    }
   }
 
   async removeAddrGstFile(customer: any, addr: any) {
-    addr.gstFile = undefined;
-    await this.apiService.put('customers', this.toDbRow(customer));
+    try {
+      addr.gstFile = undefined;
+      await this.apiService.put('customers', this.toDbRow(customer));
+      this.toastService.success('GST document removed');
+    } catch {
+      this.toastService.error('Failed to remove document');
+    }
   }
 
   async onAddrGstFileSelect(event: any, customer: any, addr: any) {
@@ -633,17 +648,23 @@ export class CustomersComponent {
     this.newCustomer.name = [pc?.firstName, pc?.lastName].filter(Boolean).join(' ').trim()
       || this.newCustomer.companyName;
 
-    if (this.isEditing && this.editingIndex !== null) {
-      const realIndex = this.customers.findIndex(c => c.id === this.newCustomer.id);
-      const storeIndex = realIndex !== -1 ? realIndex : this.editingIndex;
-      await this.apiService.put('customers', this.toDbRow(this.newCustomer));
-      if (storeIndex !== null && storeIndex !== -1) {
-        this.customers[storeIndex] = JSON.parse(JSON.stringify(this.newCustomer));
+    try {
+      if (this.isEditing && this.editingIndex !== null) {
+        const realIndex = this.customers.findIndex(c => c.id === this.newCustomer.id);
+        const storeIndex = realIndex !== -1 ? realIndex : this.editingIndex;
+        await this.apiService.put('customers', this.toDbRow(this.newCustomer));
+        if (storeIndex !== null && storeIndex !== -1) {
+          this.customers[storeIndex] = JSON.parse(JSON.stringify(this.newCustomer));
+        }
+        this.toastService.success(`${this.newCustomer.companyName} updated`);
+      } else {
+        const newId = await this.apiService.add('customers', this.toDbRow(this.newCustomer));
+        this.newCustomer.id = newId;
+        this.customers.push(JSON.parse(JSON.stringify(this.newCustomer)));
+        this.toastService.success(`${this.newCustomer.companyName} added`);
       }
-    } else {
-      const newId = await this.apiService.add('customers', this.toDbRow(this.newCustomer));
-      this.newCustomer.id = newId;
-      this.customers.push(JSON.parse(JSON.stringify(this.newCustomer)));
+    } catch {
+      this.toastService.error('Failed to save customer');
     }
 
     this.cancelModal();
@@ -653,14 +674,25 @@ export class CustomersComponent {
   async deleteCustomer(customer: any) {
     const index = this.customers.findIndex(c => c.id === customer.id);
     if (index === -1) return;
-    await this.apiService.delete('customers', customer.id);
-    this.customers.splice(index, 1);
+    if (!await this.confirmService.confirm(`Delete ${customer.companyName}?`, { danger: true })) return;
+    try {
+      await this.apiService.delete('customers', customer.id);
+      this.customers.splice(index, 1);
+      this.toastService.success(`${customer.companyName} deleted`);
+    } catch {
+      this.toastService.error('Failed to delete customer');
+    }
   }
 
   async resetCustomers() {
     if (!await this.confirmService.confirm('Delete ALL customers? This cannot be undone.', { title: 'Delete All Customers', confirmLabel: 'Delete All', danger: true })) return;
-    await this.apiService.deleteWhere('customers', { org_id: this.apiService.getOrgId() });
-    this.customers = [];
+    try {
+      await this.apiService.deleteWhere('customers', { org_id: this.apiService.getOrgId() });
+      this.customers = [];
+      this.toastService.success('All customers deleted');
+    } catch {
+      this.toastService.error('Failed to delete customers');
+    }
   }
 
   /* ─── Excel Import ─── */
