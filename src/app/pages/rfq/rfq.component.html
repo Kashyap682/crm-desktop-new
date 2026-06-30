@@ -200,7 +200,14 @@
                             </div>
                         </div>
 
-                        <div class="row-3" *ngIf="!it.fromInquiry || it.density || it.thickness || it.size">
+                        <!-- Dynamic specs (new material-master format) -->
+                        <div class="form-group" *ngIf="it.material && getItemSpecsSummary(it)">
+                            <label class="form-label">Specifications</label>
+                            <div class="specs-readonly-block">{{ getItemSpecsSummary(it) }}</div>
+                        </div>
+
+                        <!-- Legacy flat specs (old inquiries without material) -->
+                        <div class="row-3" *ngIf="!it.material && (!it.fromInquiry || it.density || it.thickness || it.size)">
                             <div class="form-group" *ngIf="!it.fromInquiry || it.density">
                                 <label class="form-label">Density</label>
                                 <input type="text" class="form-input" [(ngModel)]="it.density"

@@ -779,6 +779,15 @@
   text-align: center;
 }
 
+.specs-summary-cell {
+  white-space: pre-line;
+  font-size: 12px;
+  color: #475569;
+  line-height: 1.5;
+  overflow: visible;
+  text-overflow: unset;
+}
+
 /* Follow-up List Styling */
 .followup-list {
   background: #f7fafc;

@@ -689,6 +689,28 @@
   margin-bottom: 24px;
 }
 
+/* Dynamic spec fields grid — wraps at 3 per row, shrinks on smaller modals */
+.spec-fields-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 16px 24px;
+  margin-bottom: 20px;
+  padding: 14px 16px;
+  background: #f0f6ff;
+  border: 1px solid #c7d9f5;
+  border-radius: 8px;
+}
+
+.spec-fields-grid .form-group {
+  margin-bottom: 0;
+}
+
+.field-unit {
+  font-size: 11px;
+  color: #64748b;
+  font-weight: 400;
+}
+
 .form-group:not(.row-2 .form-group):not(.row-3 .form-group) {
   margin-bottom: 24px;
 }

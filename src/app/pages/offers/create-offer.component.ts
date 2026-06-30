@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DBService } from '../../service/db.service';
 import { Router } from '@angular/router';
+import { getSpecFields, type FieldDef } from '../../config/material-master';
 
 
 @Component({
@@ -223,10 +224,13 @@ export class CreateOfferComponent implements OnInit {
       );
       const rate = inventoryItem?.price || 0;
       const qty = i.qty || 0;
-      return { name: i.productName, hsn: i.hsn || '', uom: i.uom || inventoryItem?.unit || '',
-               make: i.make || '', form: i.form || '', density: i.density || '',
-               thickness: i.thickness || '', fsk: i.fsk || '', size: i.size || '',
-               qty, rate, total: qty * rate };
+      return {
+        name: i.productName, hsn: i.hsn || '', uom: i.uom || inventoryItem?.unit || '',
+        make: i.make || '', form: i.form || '',
+        material: i.material || '', materialForm: i.form || '', specs: i.specs ? { ...i.specs } : {},
+        density: i.density || '', thickness: i.thickness || '', fsk: i.fsk || '', size: i.size || '',
+        qty, rate, total: qty * rate
+      };
     });
     this.offer.originalItemRates = this.offer.items.map((item: any) => item.rate);
     this.inquiryItemRates = [...this.offer.originalItemRates];
@@ -258,6 +262,10 @@ export class CreateOfferComponent implements OnInit {
         uom: i.uom || inventoryItem?.unit || '',
         make: i.make || '',
         form: i.form || '',
+        material: i.material || '',
+        materialForm: i.form || '',
+        specs: i.specs ? { ...i.specs } : {},
+        // legacy flat fields (kept for old inquiries)
         density: i.density || '',
         thickness: i.thickness || '',
         fsk: i.fsk || '',
@@ -538,6 +546,25 @@ export class CreateOfferComponent implements OnInit {
       });
     }
     this.showLibraryPicker = false;
+  }
+
+  /** Builds a human-readable spec summary for display in offer / inquiry tables */
+  getItemSpecsSummary(item: any): string {
+    if (item.material && item.specs && Object.keys(item.specs).length) {
+      const fields = getSpecFields(item.material, item.materialForm || '');
+      if (fields.length) {
+        return fields
+          .filter((f: FieldDef) => item.specs[f.key])
+          .map((f: FieldDef) => `${f.label}: ${item.specs[f.key]}${f.unit ? ' ' + f.unit : ''}`)
+          .join(' | ');
+      }
+    }
+    return [
+      item.density   ? `Density: ${item.density}`     : null,
+      item.thickness ? `Thickness: ${item.thickness}` : null,
+      item.fsk       ? `FSK: ${item.fsk}`             : null,
+      item.size      ? `Size: ${item.size}`            : null
+    ].filter(Boolean).join(' | ');
   }
 
   /** Returns the frozen inventory-sourced rate — unaffected by any edits in the Items section */

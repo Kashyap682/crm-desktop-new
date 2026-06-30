@@ -3,6 +3,11 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import * as XLSX from 'xlsx';
 import { DBService } from '../../service/db.service';
+import {
+  MATERIAL_MASTER, MATERIAL_CATEGORIES,
+  getMaterialById, getSpecFields,
+  type MaterialDef, type FieldDef
+} from '../../config/material-master';
 
 @Component({
   selector: 'app-inventory',
@@ -22,6 +27,9 @@ export class InventoryComponent implements OnInit {
   form: any = {};
 
   vendorNames: string[] = [];
+
+  readonly materialMaster = MATERIAL_MASTER;
+  readonly materialCategories = MATERIAL_CATEGORIES;
 
   groupPrefixMap: any = {
     'Material Distribution Division': 'MDD',
@@ -137,6 +145,50 @@ export class InventoryComponent implements OnInit {
   }
 
   /* ===============================
+     Material Master Helpers
+  =============================== */
+  getMaterialsByCategory(cat: string): MaterialDef[] {
+    return this.materialMaster.filter(m => m.category === cat);
+  }
+
+  getFormOptions(): string[] {
+    return getMaterialById(this.form.material)?.forms ?? [];
+  }
+
+  getMakeOptions(): string[] {
+    return getMaterialById(this.form.material)?.makes ?? [];
+  }
+
+  getActiveSpecFields(): FieldDef[] {
+    if (!this.form.material) return [];
+    return getSpecFields(this.form.material, this.form.materialForm || '');
+  }
+
+  specOf(): Record<string, string> {
+    if (!this.form.specs) this.form.specs = {};
+    return this.form.specs;
+  }
+
+  onMaterialChange(): void {
+    const mat = getMaterialById(this.form.material);
+    if (!mat) { this.form.specs = {}; return; }
+    this.form.specs = {};
+    this.form.materialForm = mat.forms[0] ?? '';
+    this.form.productMake = mat.makes[0] ?? '';
+    this.form.unit = mat.defaultUom;
+    if (!this.form.displayName) this.form.displayName = mat.name;
+  }
+
+  onFormChange(): void {
+    const active = new Set(getSpecFields(this.form.material, this.form.materialForm).map((f: FieldDef) => f.key));
+    if (this.form.specs) {
+      for (const key of Object.keys(this.form.specs)) {
+        if (!active.has(key)) delete this.form.specs[key];
+      }
+    }
+  }
+
+  /* ===============================
      UI Actions
   =============================== */
   openAddModal(prefill?: any) {
@@ -156,7 +208,11 @@ export class InventoryComponent implements OnInit {
       packing: '',
       numberOfUnits: 0,
       stock: 0,
-      // specs
+      // material master
+      material: prefill?.material || '',
+      materialForm: prefill?.form || '',
+      specs: prefill?.specs ? { ...prefill.specs } : {},
+      // legacy flat specs (kept for backward compat with old data)
       thickness: prefill?.thickness || '',
       density: prefill?.density || '',
       fsk: prefill?.fsk || '',
@@ -185,15 +241,23 @@ export class InventoryComponent implements OnInit {
     // map purchaseRate → price for backward compat
     this.form.price = Number(this.form.purchaseRate ?? this.form.price ?? 0);
 
-    this.form.specifications = [
-      this.form.thickness ? `Thickness: ${this.form.thickness}` : null,
-      this.form.density ? `Density: ${this.form.density}` : null,
-      this.form.fsk ? `FSK: ${this.form.fsk}` : null,
-      this.form.alloy ? `Alloy: ${this.form.alloy}` : null,
-      this.form.size ? `Size: ${this.form.size}` : null
-    ]
-      .filter(Boolean)
-      .join(' | ');
+    if (this.form.material && this.form.specs && Object.keys(this.form.specs).length) {
+      const fields = getSpecFields(this.form.material, this.form.materialForm || '');
+      this.form.specifications = fields
+        .filter((f: FieldDef) => this.form.specs[f.key])
+        .map((f: FieldDef) => `${f.label}: ${this.form.specs[f.key]}${f.unit ? ' ' + f.unit : ''}`)
+        .join(' | ');
+    } else {
+      this.form.specifications = [
+        this.form.thickness ? `Thickness: ${this.form.thickness}` : null,
+        this.form.density ? `Density: ${this.form.density}` : null,
+        this.form.fsk ? `FSK: ${this.form.fsk}` : null,
+        this.form.alloy ? `Alloy: ${this.form.alloy}` : null,
+        this.form.size ? `Size: ${this.form.size}` : null
+      ]
+        .filter(Boolean)
+        .join(' | ');
+    }
 
     try {
       const allProducts = await this.dbService.getAll('inventory');

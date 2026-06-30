@@ -421,6 +421,16 @@
     padding: 20px;
 }
 
+.specs-readonly-block {
+    padding: 10px 14px;
+    background: #f0f6ff;
+    border: 1px solid #c7d9f5;
+    border-radius: 8px;
+    font-size: 13px;
+    color: #2d3748;
+    line-height: 1.6;
+}
+
 .rfq-item-header {
     display: flex;
     justify-content: space-between;

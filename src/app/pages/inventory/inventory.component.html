@@ -210,6 +210,28 @@
           </div>
         </div>
 
+        <!-- Material + Form -->
+        <div class="row-2">
+          <div class="form-group">
+            <label class="form-label">Material</label>
+            <select [(ngModel)]="form.material" name="material" class="form-select" (change)="onMaterialChange()">
+              <option value="">Select Material</option>
+              <optgroup *ngFor="let cat of materialCategories" [label]="cat">
+                <option *ngFor="let m of getMaterialsByCategory(cat)" [value]="m.id">{{ m.name }}</option>
+              </optgroup>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Form</label>
+            <select *ngIf="getFormOptions().length" [(ngModel)]="form.materialForm" name="materialForm"
+              class="form-select" (change)="onFormChange()">
+              <option *ngFor="let f of getFormOptions()" [value]="f">{{ f }}</option>
+            </select>
+            <input *ngIf="!getFormOptions().length" [(ngModel)]="form.materialForm" name="materialForm"
+              class="form-input" placeholder="Form / Type">
+          </div>
+        </div>
+
         <div class="row-2">
           <div class="form-group">
             <label class="form-label">HSN Code</label>
@@ -219,15 +241,16 @@
             <label class="form-label">UOM <span class="required">*</span></label>
             <select [(ngModel)]="form.unit" name="unit" required class="form-select">
               <option value="">Select UOM</option>
-              <option value="Kg">Kg (Kilogram)</option>
-              <option value="Piece">Piece</option>
+              <option value="MT">MT (Metric Ton)</option>
+              <option value="KG">KG (Kilogram)</option>
+              <option value="NOS">NOS (Numbers)</option>
+              <option value="SQM">SQM (Sq. Meter)</option>
+              <option value="RMT">RMT (Running Meter)</option>
+              <option value="SET">SET</option>
+              <option value="BOX">BOX</option>
               <option value="Roll">Roll</option>
               <option value="Bundle">Bundle</option>
-              <option value="Meter">Meter</option>
-              <option value="Sq. Meter">Sq. Meter</option>
               <option value="Liter">Liter</option>
-              <option value="Box">Box</option>
-              <option value="Set">Set</option>
               <option value="Packing">Packing</option>
             </select>
           </div>
@@ -308,8 +331,26 @@
           </div>
         </div>
 
-        <!-- Specifications -->
-        <div class="specs-group">
+        <!-- Dynamic Specifications -->
+        <div *ngIf="getActiveSpecFields().length" class="specs-group">
+          <div class="specs-group-title">Specifications</div>
+          <div class="spec-fields-grid">
+            <div class="form-group" *ngFor="let field of getActiveSpecFields()">
+              <label class="form-sub-label">
+                {{ field.label }}<span *ngIf="field.unit" class="field-unit"> ({{ field.unit }})</span>
+              </label>
+              <select *ngIf="field.type === 'select'" [(ngModel)]="specOf()[field.key]" [name]="'spec_' + field.key"
+                class="form-select">
+                <option value="">Select</option>
+                <option *ngFor="let opt of field.options" [value]="opt">{{ opt }}</option>
+              </select>
+              <input *ngIf="field.type !== 'select'" [(ngModel)]="specOf()[field.key]" [name]="'spec_' + field.key"
+                class="form-input" [placeholder]="field.label">
+            </div>
+          </div>
+        </div>
+        <!-- Legacy flat specs (shown only when no material selected, for editing old records) -->
+        <div *ngIf="!form.material" class="specs-group">
           <div class="specs-group-title">Specifications</div>
           <div class="row-3">
             <div class="form-group">

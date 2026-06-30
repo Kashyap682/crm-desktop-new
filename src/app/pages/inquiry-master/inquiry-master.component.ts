@@ -5,6 +5,11 @@ import { Router } from '@angular/router';
 import { DBService } from '../../service/db.service';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import {
+  MATERIAL_MASTER, MATERIAL_CATEGORIES,
+  getMaterialById, getSpecFields,
+  type MaterialDef, type FieldDef
+} from '../../config/material-master';
 
 
 /* =============================
@@ -13,15 +18,16 @@ import autoTable from 'jspdf-autotable';
 
 interface InquiryItem {
   productName?: string;
+  material?: string;              // material id from MATERIAL_MASTER
+  specs?: Record<string, string>; // dynamic spec values keyed by FieldDef.key
   make?: string;
   hsn?: string;
-
   form?: string;
+
+  // Legacy flat spec fields — kept for backward compat with existing saved inquiries
   density?: string;
   thickness?: string;
   fsk?: string;
-
-  // new spec fields
   size?: string;
   grade?: string;
   alloy?: string;
@@ -36,10 +42,8 @@ interface InquiryItem {
   stock?: string;
   leadTime?: string;
 
-  // locked = has inventory value (readonly); shut = no inventory value (disabled)
   _lockedFields?: string[];
   _shutFields?: string[];
-  // kept for backward compat
   _disabledFields?: string[];
 }
 
@@ -130,6 +134,10 @@ export class InquiryMasterComponent {
   contactOptions: Array<{ key: 'primary' | 'secondary'; label: string }> = [];
   selectedContactRole: 'primary' | 'secondary' = 'primary';
   companyNameSuggestions: string[] = [];
+
+  // Material master — exposed to template
+  readonly materialMaster = MATERIAL_MASTER;
+  readonly materialCategories = MATERIAL_CATEGORIES;
 
   /* ── Dial codes — same list as customers module ── */
   countryDialCodes = [
@@ -409,12 +417,63 @@ export class InquiryMasterComponent {
 
   private emptyItem(): InquiryItem {
     return {
-      productName: '', make: '', hsn: '', form: '',
+      productName: '', material: '', specs: {},
+      make: '', hsn: '', form: '',
       density: '', thickness: '', fsk: '',
       size: '', grade: '', alloy: '', temper: '', nb: '', maxTemp: '', color: '',
       qty: 1, uom: '', stock: '', leadTime: '',
       _lockedFields: [], _shutFields: [], _disabledFields: []
     };
+  }
+
+  // ── Material master helpers ───────────────────────────────────────────────
+
+  /** Always returns it.specs as a defined object — initialises to {} if missing */
+  specOf(it: InquiryItem): Record<string, string> {
+    if (!it.specs) it.specs = {};
+    return it.specs;
+  }
+
+  getMaterialsByCategory(cat: string): MaterialDef[] {
+    return MATERIAL_MASTER.filter(m => m.category === cat);
+  }
+
+  getMaterialDef(it: InquiryItem): MaterialDef | undefined {
+    return getMaterialById(it.material || '');
+  }
+
+  getFormOptions(it: InquiryItem): string[] {
+    return getMaterialById(it.material || '')?.forms || [];
+  }
+
+  getMakeOptions(it: InquiryItem): string[] {
+    return getMaterialById(it.material || '')?.makes || [];
+  }
+
+  /** Spec fields to display for the current material + form combination */
+  getActiveSpecFields(it: InquiryItem): FieldDef[] {
+    if (!it.material) return [];
+    return getSpecFields(it.material, it.form || '');
+  }
+
+  onMaterialChange(it: InquiryItem): void {
+    const mat = getMaterialById(it.material || '');
+    it.specs = {};
+    it.form = mat?.forms[0] || '';
+    it.make = '';
+    it.uom = mat?.defaultUom || '';
+    // Pre-fill productName from material name if the field is still empty
+    if (mat && !it.productName) it.productName = mat.name;
+  }
+
+  onFormChange(it: InquiryItem): void {
+    // Drop any spec values that no longer belong to the new form's field set
+    const activeKeys = new Set(getSpecFields(it.material || '', it.form || '').map(f => f.key));
+    if (it.specs) {
+      for (const key of Object.keys(it.specs)) {
+        if (!activeKeys.has(key)) delete it.specs[key];
+      }
+    }
   }
 
   // Field has inventory value — show as readonly
@@ -511,12 +570,20 @@ export class InquiryMasterComponent {
   }
 
   getSpecEntries(it: any): { label: string; value: string }[] {
-    const map: Record<string, string> = {
-      form: 'Form', make: 'Make', density: 'Density', thickness: 'Thickness',
-      fsk: 'FSK', size: 'Size', grade: 'Grade', alloy: 'Alloy',
+    // New format: specs object populated by material master
+    if (it.material && it.specs && Object.keys(it.specs).length > 0) {
+      const fields = getSpecFields(it.material, it.form || '');
+      return fields
+        .filter(f => it.specs[f.key] && it.specs[f.key] !== '')
+        .map(f => ({ label: f.label, value: it.specs[f.key] }));
+    }
+    // Legacy format: read from flat fields (inquiries saved before material master)
+    const legacy: Record<string, string> = {
+      form: 'Form', density: 'Density', thickness: 'Thickness',
+      fsk: 'FSK Facing', size: 'Size', grade: 'Grade', alloy: 'Alloy',
       temper: 'Temper', nb: 'NB', maxTemp: 'Max Temp', color: 'Color'
     };
-    return Object.entries(map)
+    return Object.entries(legacy)
       .filter(([k]) => it[k] && it[k] !== '')
       .map(([k, label]) => ({ label, value: it[k] }));
   }
@@ -562,6 +629,12 @@ export class InquiryMasterComponent {
   async loadInquiries() {
     this.customers = await this.dbService.getAll('customers');
     const data = await this.dbService.getAll('inquiries') as InquiryRecord[];
+    // Ensure specs is always an object — handles records saved before material master
+    for (const inq of data) {
+      for (const item of inq.items || []) {
+        if (!item.specs) item.specs = {};
+      }
+    }
     this.inquiries = data;
     this.filteredInquiries = data;
   }

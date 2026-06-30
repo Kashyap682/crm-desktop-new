@@ -118,14 +118,12 @@
               <thead>
                 <tr>
                   <th *ngIf="selectedInquiry.items.length > 1" style="width:36px;">✓</th>
-                  <th style="width: 25%;">Product Name</th>
-                  <th style="width: 15%;">Make/Brand</th>
-                  <th style="width: 12%;">Form</th>
-                  <th style="width: 12%;">Density</th>
-                  <th style="width: 12%;">Thickness</th>
-                  <th style="width: 9%;">FSK</th>
-                  <th style="width: 8%;">Qty</th>
-                  <th style="width: 7%;">UOM</th>
+                  <th style="width: 22%;">Product Name</th>
+                  <th style="width: 13%;">Make/Brand</th>
+                  <th style="width: 10%;">Form</th>
+                  <th style="width: 38%;">Specifications</th>
+                  <th style="width: 9%;">Qty</th>
+                  <th style="width: 8%;">UOM</th>
                 </tr>
               </thead>
               <tbody>
@@ -138,9 +136,7 @@
                   <td><strong>{{ item.productName || '-' }}</strong></td>
                   <td>{{ item.make || '-' }}</td>
                   <td>{{ item.form || '-' }}</td>
-                  <td>{{ item.density || '-' }}</td>
-                  <td>{{ item.thickness || '-' }}</td>
-                  <td>{{ item.fsk || '-' }}</td>
+                  <td class="specs-summary-cell">{{ getItemSpecsSummary(item) || '-' }}</td>
                   <td class="text-center">{{ item.qty || '-' }}</td>
                   <td class="text-center">{{ item.uom || '-' }}</td>
                 </tr>
@@ -185,10 +181,9 @@
                 <th>Item Name</th>
                 <th>Make</th>
                 <th>Form</th>
-                <th>Density</th>
                 <th>Specifications</th>
                 <th>HSN Code</th>
-                <th>Quantity</th>
+                <th>Qty</th>
                 <th>Rate (₹)</th>
                 <th>Total (₹)</th>
               </tr>
@@ -198,8 +193,7 @@
                 <td>{{ item.name }}</td>
                 <td><input type="text" class="table-input" [(ngModel)]="item.make" [name]="'make-'+i" style="min-width:80px;" /></td>
                 <td><input type="text" class="table-input" [(ngModel)]="item.form" [name]="'form-'+i" style="min-width:70px;" /></td>
-                <td><input type="text" class="table-input" [(ngModel)]="item.density" [name]="'density-'+i" style="min-width:70px;" /></td>
-                <td><input type="text" class="table-input" [(ngModel)]="item.fsk" [name]="'fsk-'+i" placeholder="FSK/Size/Grade" style="min-width:90px;" /></td>
+                <td class="specs-summary-cell">{{ getItemSpecsSummary(item) || '-' }}</td>
                 <td>{{ item.hsn }}</td>
                 <td class="qty-cell">{{ item.qty }}</td>
                 <td class="rate-cell">

@@ -5,6 +5,7 @@ import { Router } from "@angular/router";
 import { DBService } from '../../service/db.service';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { getSpecFields, type FieldDef } from '../../config/material-master';
 
 interface OfferLetter {
   date: string;
@@ -216,12 +217,20 @@ export class OffersComponent {
     // Always keep taxes as fixed standard text — never use item.gst numeric value
     this.offerLetter.taxes = 'Extra - GST as applicable';
 
-    const data = await this.findInventoryItemForOfferItem(item);
-
-    if (data) {
-      this.offerLetter.density = data.density || '';
-      this.offerLetter.thickness = data.thickness || '';
-      this.offerLetter.size = data.size || '';
+    // Prefer specs from the offer item itself (new material-master format)
+    if (item.material && item.specs && Object.keys(item.specs).length) {
+      const fields = getSpecFields(item.material, item.materialForm || '');
+      const getVal = (keys: string[]) => keys.map(k => item.specs[k]).find(Boolean) || '';
+      this.offerLetter.density   = getVal(['density', 'density_kgm3']);
+      this.offerLetter.thickness = getVal(['thickness', 'thickness_mm']);
+      this.offerLetter.size      = getVal(['size', 'width', 'length']);
+    } else {
+      const data = await this.findInventoryItemForOfferItem(item);
+      if (data) {
+        this.offerLetter.density   = data.density   || '';
+        this.offerLetter.thickness = data.thickness || '';
+        this.offerLetter.size      = data.size      || '';
+      }
     }
   }
 

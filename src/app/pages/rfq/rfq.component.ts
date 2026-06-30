@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DBService } from '../../service/db.service';
 import { saveAs } from 'file-saver';
+import { getSpecFields, type FieldDef } from '../../config/material-master';
 
 interface RfqItem {
   product: string;
@@ -21,6 +22,11 @@ interface RfqItem {
   qty: number | null;
   uom: string;
   fromInquiry?: boolean;
+  // material master
+  material?: string;
+  materialForm?: string;
+  specs?: Record<string, string>;
+  specsSummary?: string; // computed before Excel export
 }
 
 interface RfqAddress {
@@ -121,22 +127,25 @@ export class RfqComponent implements OnInit {
       // Map the inquiry item fields → RFQ item fields
       const it = state.item;
       this.items = [{
-        product:   it.productName || it.product || '',
-        form:      it.form      || '',
-        make:      it.make      || '',
-        density:   it.density   || '',
-        thickness: it.thickness || '',
-        size:      it.size      || '',
-        fsk:       it.fsk       || '',
-        grade:     it.grade     || '',
-        alloy:     it.alloy     || '',
-        temper:    it.temper    || '',
-        nb:        it.nb        || '',
-        maxTemp:   it.maxTemp   || '',
-        color:     it.color     || '',
-        qty:       it.qty       ?? null,
-        uom:       it.uom       || '',
-        fromInquiry: true
+        product:      it.productName  || it.product || '',
+        form:         it.form         || '',
+        make:         it.make         || '',
+        density:      it.density      || '',
+        thickness:    it.thickness    || '',
+        size:         it.size         || '',
+        fsk:          it.fsk          || '',
+        grade:        it.grade        || '',
+        alloy:        it.alloy        || '',
+        temper:       it.temper       || '',
+        nb:           it.nb           || '',
+        maxTemp:      it.maxTemp      || '',
+        color:        it.color        || '',
+        qty:          it.qty          ?? null,
+        uom:          it.uom          || '',
+        fromInquiry:  true,
+        material:     it.material     || '',
+        materialForm: it.form         || '',
+        specs:        it.specs ? { ...it.specs } : {}
       }];
 
       // Auto-select vendor if inventory had one linked
@@ -157,8 +166,27 @@ export class RfqComponent implements OnInit {
     return {
       product: '', form: '', make: '', density: '', thickness: '',
       size: '', fsk: '', grade: '', alloy: '', temper: '',
-      nb: '', maxTemp: '', color: '', qty: null, uom: ''
+      nb: '', maxTemp: '', color: '', qty: null, uom: '',
+      material: '', materialForm: '', specs: {}
     };
+  }
+
+  getItemSpecsSummary(it: RfqItem): string {
+    if (it.material && it.specs && Object.keys(it.specs).length) {
+      const fields = getSpecFields(it.material, it.materialForm || '');
+      if (fields.length) {
+        return fields
+          .filter((f: FieldDef) => it.specs![f.key])
+          .map((f: FieldDef) => `${f.label}: ${it.specs![f.key]}${f.unit ? ' ' + f.unit : ''}`)
+          .join(' | ');
+      }
+    }
+    return [
+      it.density    ? `Density: ${it.density}`     : null,
+      it.thickness  ? `Thickness: ${it.thickness}` : null,
+      it.fsk        ? `FSK: ${it.fsk}`             : null,
+      it.size       ? `Size: ${it.size}`            : null
+    ].filter(Boolean).join(' | ');
   }
 
   async loadInquiries() {
@@ -227,22 +255,25 @@ export class RfqComponent implements OnInit {
     // Autofill items from inquiry items
     if (inq.items && inq.items.length > 0) {
       this.items = inq.items.map((it: any) => ({
-        product: it.product || it.item || it.productName || '',
-        form: it.form || '',
-        make: it.productMake || it.make || '',
-        density: it.density || '',
-        thickness: it.thickness || '',
-        size: it.size || '',
-        fsk: it.fsk || '',
-        grade: it.grade || '',
-        alloy: it.alloy || '',
-        temper: it.temper || '',
-        nb: it.nb || '',
-        maxTemp: it.maxTemp || '',
-        color: it.color || '',
-        qty: it.qty || null,
-        uom: it.uom || '',
-        fromInquiry: true
+        product:      it.product || it.item || it.productName || '',
+        form:         it.form      || '',
+        make:         it.productMake || it.make || '',
+        density:      it.density   || '',
+        thickness:    it.thickness || '',
+        size:         it.size      || '',
+        fsk:          it.fsk       || '',
+        grade:        it.grade     || '',
+        alloy:        it.alloy     || '',
+        temper:       it.temper    || '',
+        nb:           it.nb        || '',
+        maxTemp:      it.maxTemp   || '',
+        color:        it.color     || '',
+        qty:          it.qty       || null,
+        uom:          it.uom       || '',
+        fromInquiry:  true,
+        material:     it.material  || '',
+        materialForm: it.form      || '',
+        specs:        it.specs ? { ...it.specs } : {}
       }));
     }
   }
@@ -365,16 +396,23 @@ export class RfqComponent implements OnInit {
   private async exportRfqData(rfq: RfqRecord): Promise<void> {
     const safe = (v: any) => (v == null ? '' : String(v).trim());
 
+    // Pre-compute specsSummary so it's available as a flat field for the table
+    const enrichedItems: RfqItem[] = rfq.items.map(it => ({
+      ...it,
+      specsSummary: this.getItemSpecsSummary(it)
+    }));
+
     type ProductKey = keyof Omit<RfqItem, 'fromInquiry'>;
     const allProductFields: [string, ProductKey][] = [
       ['Product', 'product'], ['Form', 'form'], ['Make', 'make'],
+      ['Specifications', 'specsSummary'],
       ['Density', 'density'], ['Thickness', 'thickness'], ['Size', 'size'],
       ['FSK Facing', 'fsk'], ['Grade', 'grade'], ['Alloy', 'alloy'],
       ['Temper', 'temper'], ['NB', 'nb'], ['Max Temp (°C)', 'maxTemp'],
       ['Color', 'color'], ['Qty', 'qty'], ['UOM', 'uom'],
     ];
     const usedFields = allProductFields.filter(([, key]) =>
-      rfq.items.some(it => safe(it[key] as any) !== '')
+      enrichedItems.some(it => safe(it[key] as any) !== '')
     );
 
     const totalCols = Math.max(10, usedFields.length + 1);
@@ -566,7 +604,7 @@ export class RfqComponent implements OnInit {
     });
 
     // Table data rows
-    rfq.items.forEach((it: RfqItem, idx: number) => {
+    enrichedItems.forEach((it: RfqItem, idx: number) => {
       r++;
       ws.getRow(r).height = 18;
       const rowBg = idx % 2 === 1 ? ROW_ALT : WHITE;

@@ -193,7 +193,7 @@
 .data-table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 1400px;
+  min-width: 1700px;
 }
 
 .data-table thead {
@@ -311,14 +311,14 @@
 
 .data-table th:nth-child(14),
 .data-table td:nth-child(14) {
-  min-width: 70px;
-  max-width: 80px;
+  min-width: 120px;
+  max-width: 150px;
 }
 
 .data-table th:nth-child(15),
 .data-table td:nth-child(15) {
-  min-width: 80px;
-  max-width: 100px;
+  min-width: 200px;
+  max-width: 260px;
 }
 
 .data-table th:nth-child(16),
@@ -420,10 +420,12 @@
 }
 
 .specs-cell {
-  max-width: 200px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  min-width: 160px;
+  max-width: 220px;
+  white-space: normal;
+  line-height: 1.6;
+  font-size: 12px;
+  color: #475569;
 }
 
 .btn-attachment {
@@ -1168,4 +1170,20 @@ select:-webkit-autofill:focus {
   height: 40px;
   padding: 8px 12px;
   border-radius: 10px;
+}
+
+.spec-fields-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 14px 20px;
+}
+
+.spec-fields-grid .form-group {
+  margin-bottom: 0;
+}
+
+.field-unit {
+  font-size: 11px;
+  color: #64748b;
+  font-weight: 400;
 }
